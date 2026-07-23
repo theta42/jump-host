@@ -1,6 +1,6 @@
 {
   "name": "t42-jump-host",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "SSH jump host for the theta42 stack — LDAP-authenticated, directory-driven host bridging with audit and metrics",
   "author": [
     {

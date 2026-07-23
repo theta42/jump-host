@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.0.1] - 2026-07-23
+
+### Fixed
+- Test scripts use shell-expanded globs and CI provides a redis service, so `npm test` runs green on the Node 20/22 CI runners (the `node --test` `**` glob and the redis-backed models only worked locally before). No runtime change.
+
 ## [1.0.0] - 2026-07-23
 
 ### Added
