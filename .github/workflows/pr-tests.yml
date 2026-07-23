@@ -13,6 +13,19 @@ jobs:
     name: Run Tests
     runs-on: ubuntu-latest
 
+    # The audit/metrics/session models are redis-backed (model-redis opens a
+    # client on import), so the tests need a reachable redis at 127.0.0.1:6379.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     strategy:
       matrix:
         node-version: [20.x, 22.x]
