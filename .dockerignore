@@ -1,0 +1,39 @@
+# .git is intentionally NOT excluded — the gitinfo build stage reads it to
+# bake the commit hash, then it's discarded before the final stage.
+.gitignore
+
+# Docs not needed in the image (README/CHANGELOG/DEPLOYMENT are copied explicitly).
+docs/
+*.md
+!README.md
+!CHANGELOG.md
+!DEPLOYMENT.md
+
+# Tests
+nodejs/test/
+
+# Host dependency tree — let the image run a clean npm ci.
+nodejs/node_modules
+
+# Local dev state
+nodejs/data
+data/
+
+# Secrets (mount at runtime instead)
+nodejs/conf/secrets.js
+secrets.js
+config/
+
+# Docker (prevent recursive copy)
+Dockerfile*
+docker-compose.yml
+.dockerignore
+
+# Ops (systemd/install run on the host, not in the image)
+ops/
+
+# IDE / OS
+.vscode
+.idea
+*.swp
+.DS_Store

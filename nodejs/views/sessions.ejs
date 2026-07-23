@@ -1,0 +1,13 @@
+<%- include('top') %>
+<h1>Active sessions</h1>
+<% if (!active.length) { %><p class="muted">No active sessions.</p><% } else { %>
+<table>
+	<thead><tr><th>User</th><th>Target host</th><th>Address</th><th>Started</th></tr></thead>
+	<tbody>
+	<% active.forEach(s => { %>
+		<tr><td><%= s.uid %></td><td><%= s.slug || '—' %></td><td><%= s.target %></td><td><%= new Date(s.startedAt).toLocaleString() %></td></tr>
+	<% }) %>
+	</tbody>
+</table>
+<% } %>
+<%- include('bottom') %>

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title><%= name %> — Jump Host login</title>
+	<link rel="stylesheet" href="/public/css/app.css">
+</head>
+<body class="center">
+<form method="post" action="/login" class="card login">
+	<h1><%= name %> <small>jump host</small></h1>
+	<% if (error) { %><p class="err"><%= error %></p><% } %>
+	<label>Username <input name="uid" autofocus autocomplete="username"></label>
+	<label>Password <input name="password" type="password" autocomplete="current-password"></label>
+	<button type="submit">Sign in</button>
+	<p class="hint">Admin group required. Uses your directory (LDAP) credentials.</p>
+</form>
+</body>
+</html>

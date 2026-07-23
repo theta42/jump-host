@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title><%= name %> — Jump Host</title>
+	<link rel="stylesheet" href="/public/css/app.css">
+</head>
+<body>
+<nav class="nav">
+	<span class="brand"><%= name %> <small>jump host</small></span>
+	<% if (typeof user !== 'undefined' && user) { %>
+	<span class="spacer"></span>
+	<a href="/">Dashboard</a>
+	<a href="/sessions">Sessions</a>
+	<a href="/audit">Audit</a>
+	<span class="who"><%= user.uid %></span>
+	<form method="post" action="/logout" class="inline"><button class="link">logout</button></form>
+	<% } %>
+</nav>
+<main class="wrap">

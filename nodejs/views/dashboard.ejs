@@ -1,0 +1,51 @@
+<%- include('top') %>
+<h1>Dashboard</h1>
+<div class="tiles">
+	<div class="tile"><span class="n"><%= metrics.active %></span><span class="l">active sessions</span></div>
+	<div class="tile"><span class="n"><%= metrics.total %></span><span class="l">total connections</span></div>
+	<div class="tile"><span class="n"><%= metrics.fail %></span><span class="l">failed</span></div>
+</div>
+
+<div class="cols">
+	<section>
+		<h2>Active sessions</h2>
+		<% if (!active.length) { %><p class="muted">None right now.</p><% } else { %>
+		<table>
+			<thead><tr><th>User</th><th>Target</th><th>Since</th></tr></thead>
+			<tbody>
+			<% active.forEach(s => { %>
+				<tr><td><%= s.uid %></td><td><%= s.slug || s.target %></td><td><%= new Date(s.startedAt).toLocaleTimeString() %></td></tr>
+			<% }) %>
+			</tbody>
+		</table>
+		<% } %>
+	</section>
+
+	<section>
+		<h2>Top hosts</h2>
+		<% if (!metrics.topHosts.length) { %><p class="muted">No data.</p><% } else { %>
+		<table><tbody>
+			<% metrics.topHosts.forEach(h => { %><tr><td><%= h.name %></td><td class="r"><%= h.count %></td></tr><% }) %>
+		</tbody></table>
+		<% } %>
+	</section>
+</div>
+
+<section>
+	<h2>Recent connections <a class="more" href="/audit">view all →</a></h2>
+	<table>
+		<thead><tr><th>Time</th><th>User</th><th>Target</th><th>Method</th><th>Result</th></tr></thead>
+		<tbody>
+		<% recent.forEach(e => { %>
+			<tr>
+				<td><%= new Date(e.ts).toLocaleString() %></td>
+				<td><%= e.uid %></td>
+				<td><%= e.targetSlug || e.targetAddr || '—' %></td>
+				<td><%= e.authMethod %> / <%= e.mode %></td>
+				<td><%= e.success ? '✓' : '✗ ' + e.failReason %></td>
+			</tr>
+		<% }) %>
+		</tbody>
+	</table>
+</section>
+<%- include('bottom') %>

@@ -1,0 +1,21 @@
+[Unit]
+Description=Theta42 SSH jump host
+After=network.target redis-server.service
+Wants=redis-server.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=root
+WorkingDirectory=/opt/theta42/jump-host/nodejs
+Environment="NODE_ENV=production"
+Environment="CONF_SECRETS=/etc/jump-host/secrets.js"
+ExecStart=/usr/bin/env node /opt/theta42/jump-host/nodejs/bin/www
+# The default listen port is 2222 (no privilege needed). To run on 22, set
+# ssh.listenPort in secrets.js AND uncomment the next line:
+# AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

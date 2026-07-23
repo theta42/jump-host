@@ -1,0 +1,6 @@
+config/
+data/
+secrets.js
+*.log
+.DS_Store
+node_modules/

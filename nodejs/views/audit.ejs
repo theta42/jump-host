@@ -1,0 +1,39 @@
+<%- include('top') %>
+<h1>Audit log</h1>
+<form class="filters" method="get">
+	<input name="uid" placeholder="user" value="<%= query.uid || '' %>">
+	<input name="target" placeholder="target" value="<%= query.target || '' %>">
+	<select name="status">
+		<option value="">any</option>
+		<option value="success" <%= query.status === 'success' ? 'selected' : '' %>>success</option>
+		<option value="fail" <%= query.status === 'fail' ? 'selected' : '' %>>fail</option>
+	</select>
+	<button>Filter</button>
+</form>
+
+<table>
+	<thead><tr><th>Time</th><th>User</th><th>Method</th><th>Mode</th><th>Target</th><th>Chan</th><th>Client</th><th>Result</th><th>Bytes</th></tr></thead>
+	<tbody>
+	<% data.results.forEach(e => { %>
+		<tr class="<%= e.success ? '' : 'bad' %>">
+			<td><%= new Date(e.ts).toLocaleString() %></td>
+			<td><%= e.uid %></td>
+			<td><%= e.authMethod %></td>
+			<td><%= e.mode %></td>
+			<td><%= e.targetSlug || e.targetAddr || '—' %></td>
+			<td><%= e.channel || '—' %></td>
+			<td><%= e.clientIp %></td>
+			<td><%= e.success ? '✓' : '✗ ' + e.failReason %></td>
+			<td class="r"><%= (e.bytesIn + e.bytesOut) || 0 %></td>
+		</tr>
+	<% }) %>
+	</tbody>
+</table>
+
+<div class="pager">
+	<% const p = data.page; %>
+	<% if (p > 0) { %><a href="?page=<%= p-1 %>&uid=<%= query.uid||'' %>&target=<%= query.target||'' %>&status=<%= query.status||'' %>">← prev</a><% } %>
+	<span><%= data.total %> events</span>
+	<% if ((p+1) * data.pageSize < data.total) { %><a href="?page=<%= p+1 %>&uid=<%= query.uid||'' %>&target=<%= query.target||'' %>&status=<%= query.status||'' %>">next →</a><% } %>
+</div>
+<%- include('bottom') %>

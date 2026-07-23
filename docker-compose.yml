@@ -1,0 +1,26 @@
+# Standalone jump-host deployment. For the unified stack, see theta42/theta-env
+# (this same service, gated behind the `jump-host` compose profile).
+#
+# Supply config either by bind-mounting a secrets file at
+# /config/jump-secrets.js (the entrypoint picks it up) or via app_* env vars.
+
+services:
+  jump-host:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GIT_COMMIT: ${JUMP_GIT_COMMIT:-}
+    container_name: jump-host
+    restart: unless-stopped
+    ports:
+      - "${JUMP_SSH_PORT:-2222}:2222"   # SSH front door
+      - "${JUMP_WEB_BIND:-0.0.0.0}:${JUMP_WEB_PORT:-3002}:3002"  # web UI/API
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./config:/config:ro       # optional: jump-secrets.js
+      - jump-data:/var/lib/jump-host   # host keys persist across restarts
+
+volumes:
+  jump-data:

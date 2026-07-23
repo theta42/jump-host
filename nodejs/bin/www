@@ -1,0 +1,31 @@
+#!/usr/bin/env node
+'use strict';
+
+// Boots BOTH faces of the jump host: the SSH front door (services/ssh_server)
+// and the web UI/API (app.js). One process, one redis, shared audit store.
+
+const http = require('http');
+const conf = require('@simpleworkjs/conf');
+
+require('../models'); // wire model-redis + register models
+
+const app = require('../app');
+const sshServer = require('../services/ssh_server');
+
+// Web server
+const webPort = (conf.web && conf.web.port) || 3002;
+const server = http.createServer(app);
+server.listen(webPort, () => {
+	console.log(`[web] jump-host UI/API on :${server.address().port}`);
+});
+
+// SSH server
+sshServer.start();
+
+function shutdown() {
+	console.log('[jump-host] shutting down');
+	server.close();
+	process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
