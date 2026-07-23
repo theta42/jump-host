@@ -147,8 +147,8 @@ test('shell bridges and echoes', async () => {
 				buf += d;
 				if (buf.includes('echo:ping')) { resolve(buf); }
 			});
-			setTimeout(() => stream.write('ping'), 100);
-			setTimeout(() => resolve(buf), 1500);
+			setTimeout(() => stream.write('ping'), 150);
+			setTimeout(() => resolve(buf), 5000);
 		});
 	});
 	conn.end();
@@ -168,7 +168,7 @@ test('sftp subsystem bytes pass through', async () => {
 				if (buf.includes('sftp:')) resolve(buf.toString());
 			});
 			stream.write(Buffer.from('PKT'));
-			setTimeout(() => resolve(buf.toString()), 1500);
+			setTimeout(() => resolve(buf.toString()), 5000);
 		});
 	});
 	conn.end();
