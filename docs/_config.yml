@@ -1,0 +1,41 @@
+title: Jump Host
+description: An SSH jump host for the theta42 stack — LDAP-authenticated, directory-driven host bridging with audit and metrics.
+url: "https://theta42.github.io"
+baseurl: "/jump-host"
+logo: /assets/img/theta42.svg
+lang: en_US
+
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+github:
+  repository_url: https://github.com/theta42/jump-host
+  zip_url: https://github.com/theta42/jump-host/archive/refs/heads/master.zip
+  tar_url: https://github.com/theta42/jump-host/archive/refs/heads/master.tar.gz
+  repository_name: theta42/jump-host
+
+nav:
+  - title: Home
+    page: /
+    icon: fa-house
+  - title: Connecting
+    page: /connecting.html
+    icon: fa-terminal
+  - title: Architecture
+    page: /architecture.html
+    icon: fa-sitemap
+  - title: Installation
+    page: /installation.html
+    icon: fa-download
+  - title: Changelog
+    url: https://github.com/theta42/jump-host/blob/master/CHANGELOG.md
+    icon: fa-list
+
+defaults:
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: default
+      image: /assets/img/theta42.svg
