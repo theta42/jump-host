@@ -2,24 +2,33 @@
 'use strict';
 
 // Boots BOTH faces of the jump host: the SSH front door (services/ssh_server)
-// and the web UI/API (app.js). One process, one redis, shared audit store.
+// and the web UI/API (app.js + Socket.IO). One process, one redis, shared
+// audit store.
 
 const http = require('http');
 const conf = require('@simpleworkjs/conf');
+const { Server } = require('socket.io');
 
-require('../models'); // wire model-redis + register models
+require('../models');
 
 const app = require('../app');
+const middleware = require('../middleware/auth');
 const sshServer = require('../services/ssh_server');
 
-// Web server
 const webPort = (conf.web && conf.web.port) || 3002;
 const server = http.createServer(app);
+
+// Socket.IO — the client framework (app-base.js) opens an authenticated socket.
+// We don't push anything yet, but serving /socket.io keeps the shared front-end
+// working exactly as it does in the sibling apps.
+const io = new Server(server);
+io.use(middleware.authIO);
+app.io = io;
+
 server.listen(webPort, () => {
 	console.log(`[web] jump-host UI/API on :${server.address().port}`);
 });
 
-// SSH server
 sshServer.start();
 
 function shutdown() {

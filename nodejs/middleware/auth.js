@@ -1,36 +1,54 @@
 'use strict';
 
-// Web UI/API auth: a signed-in admin session (cookie) whose LDAP groups
-// intersect conf.auth.adminGroups. /health and the login routes are exempt
-// (mounted before this middleware).
+// Web UI/API auth, mirroring the sibling apps: a browser session token
+// (`auth-token: <AuthToken uuid>`) established via local login or the OIDC
+// callback. The token carries the group snapshot captured at login.
 
 const conf = require('@simpleworkjs/conf');
-const Session = require('../models/session');
+const { Auth } = require('../models/auth');
 
-function parseCookies(header) {
-	const out = {};
-	(header || '').split(';').forEach((p) => {
-		const i = p.indexOf('=');
-		if (i > -1) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim());
-	});
-	return out;
+async function auth(req, res, next){
+	try{
+		req.token = await Auth.checkToken(req.header('auth-token'));
+		req.user = req.token.user;
+		req.groups = typeof req.token.groupsArray === 'function' ? req.token.groupsArray() : [];
+		return next();
+	}catch(error){
+		next(error);
+	}
 }
 
-async function requireAdmin(req, res, next) {
-	const token = parseCookies(req.headers.cookie).jump_session;
-	const session = await Session.verify(token);
-	if (!session) {
-		if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'unauthorized' });
-		return res.redirect('/login');
-	}
-	const groups = JSON.parse(session.groups || '[]');
-	const admin = (conf.auth.adminGroups || []).some((g) => groups.includes(g));
-	if (!admin) {
-		if (req.path.startsWith('/api/')) return res.status(403).json({ error: 'forbidden' });
-		return res.status(403).render('login', { error: 'Your account is not a jump-host admin.', name: conf.name });
-	}
-	req.jumpUser = { uid: session.uid, groups };
-	next();
+// Is the authenticated request an admin? Admin = a session whose OIDC groups
+// intersect conf.auth.adminGroups, OR the local anti-lockout admin
+// (conf.auth.adminUsers). The whole web UI is admin-only (audit + metrics).
+function isAdmin(req){
+	const adminGroups = (conf.auth && conf.auth.adminGroups) || [];
+	const adminUsers = (conf.auth && conf.auth.adminUsers) || [];
+	const username = req.user && req.user.username;
+	if(username && adminUsers.includes(username)) return true;
+	return (req.groups || []).some(g => adminGroups.includes(g));
 }
 
-module.exports = { requireAdmin, parseCookies };
+async function requireAdmin(req, res, next){
+	if(isAdmin(req)) return next();
+	const error = new Error('Forbidden');
+	error.name = 'Forbidden';
+	error.status = 403;
+	error.message = 'Admin access required.';
+	next(error);
+}
+
+// Socket.IO handshake auth (app-base.js connects with the session token).
+async function authIO(socket, next){
+	try{
+		const tok = socket.handshake.auth && socket.handshake.auth.token;
+		if(!tok) return next(Auth.errors.login());
+		const token = await Auth.checkToken(tok);
+		socket.user = token.user;
+		next();
+	}catch(error){
+		next(error);
+	}
+}
+
+module.exports = { auth, requireAdmin, authIO, isAdmin };

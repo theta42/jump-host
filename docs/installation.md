@@ -94,7 +94,8 @@ Every key is documented in
 [`secrets.js.example`](https://github.com/theta42/jump-host/blob/master/secrets.js.example):
 `ldap` (bind + bases + TLS), `sso` (url + apiToken), `ssh`
 (`listenPort`, `passwordAuth`, `allowRawIPs`, `keyComment`, timeouts,
-`maxSessions`), `web.port`, `auth.adminGroups`, and `redis`.
+`maxSessions`), `web.port`, `oidc` (web-UI SSO login), `auth`
+(`adminGroups` / `adminUsers` / `localAdminPass`), and `redis`.
 
 ## Verifying
 

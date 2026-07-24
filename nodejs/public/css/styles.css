@@ -1,0 +1,20 @@
+nav.navbar{
+	padding-left: 1em;
+	padding-right: 1em;
+}
+
+body {
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
+}
+
+#spa-shell {
+	margin-top: 4.5rem;
+	padding-bottom: 1em;
+	flex-grow: 1;
+}
+
+.card-title{
+	font-weight: bold;
+}

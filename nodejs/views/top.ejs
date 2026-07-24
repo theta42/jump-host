@@ -1,21 +1,78 @@
 <!doctype html>
 <html lang="en">
-<head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title><%= name %> — Jump Host</title>
-	<link rel="stylesheet" href="/public/css/app.css">
-</head>
-<body>
-<nav class="nav">
-	<span class="brand"><%= name %> <small>jump host</small></span>
-	<% if (typeof user !== 'undefined' && user) { %>
-	<span class="spacer"></span>
-	<a href="/">Dashboard</a>
-	<a href="/sessions">Sessions</a>
-	<a href="/audit">Audit</a>
-	<span class="who"><%= user.uid %></span>
-	<form method="post" action="/logout" class="inline"><button class="link">logout</button></form>
-	<% } %>
-</nav>
-<main class="wrap">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<title><%- name %> <%- title %></title>
+		<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+		<link rel="stylesheet" href="/static-modules/bootstrap/dist/css/bootstrap.min.css">
+		<link rel="stylesheet" href="/static-modules/@fortawesome/fontawesome-free/css/all.min.css">
+		<link rel='stylesheet' href='/static/css/styles.css' />
+		<script type="text/javascript" src="/socket.io/socket.io.js"></script>
+		<script type="text/javascript" src='/static-modules/jquery/dist/jquery.js'></script>
+		<script type="text/javascript" src="/static-modules/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+		<script type="text/javascript" src="/static-modules/@fortawesome/fontawesome-free/js/all.min.js"></script>
+		<script type="text/javascript" src='/static-modules/mustache/mustache.min.js'></script>
+		<script type="text/javascript" src='/static-modules/jq-repeat/dist/js/jq-repeat.js'></script>
+		<script type="text/javascript" src='/static/lib/js/val.js'></script>
+		<script type="text/javascript" src="/static-modules/moment/moment.js"></script>
+		<script type="text/javascript" src="/static/lib/js/app-base.js"></script>
+		<script type="text/javascript" src="/static/js/app.js"></script>
+	</head>
+	<body>
+
+		<nav class="navbar navbar-expand-md navbar-dark fixed-top bg-dark">
+			<a class="navbar-brand" href="/"><img src="<%- logo %>" height="28" class="me-2" alt=""><%- name %> <%- titleIcon %></a>
+			<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+				<span class="navbar-toggler-icon"></span>
+			</button>
+			<div class="collapse navbar-collapse justify-content-end" id="navbarSupportedContent">
+				<ul class="navbar-nav top-nav">
+					<li class="nav-item">
+						<a class="nav-link" href="/dashboard"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link" href="/sessions"><i class="fa-solid fa-plug-circle-bolt"></i> Sessions</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link" href="/audit"><i class="fa-solid fa-clipboard-list"></i> Audit</a>
+					</li>
+				</ul>
+				<div class="form-inline mt-2 mt-md-0">
+					<span id="cl-username" class="navbar-text text-light me-3" style="display: none;">
+						<i class="fa-solid fa-user me-1"></i><span id="cl-username-text"></span>
+					</span>
+					<a id="cl-login-button" class="btn btn-outline-danger my-2 my-sm-0" href="/login" style="display: none;">
+						<i class="fas fa-sign-in"></i> Login
+					</a>
+					<button id="cl-logout-button" class="btn btn-outline-danger my-2 my-sm-0" onclick="app.auth.logOut(function(){ window.location.href='/login'; })" style="display: none;">
+						<i class="fas fa-sign-out"></i> Log Out
+					</button>
+				</div>
+			</div>
+		</nav>
+
+		<script type="text/javascript">
+			$(document).ready(function(){
+				$('.top-nav a').each(function(){
+					var $this = $(this);
+					$this.removeClass('active');
+					if($this.attr('href').toLowerCase() === window.location.pathname.toLowerCase()){
+						$this.addClass('active');
+					}
+				});
+				app.auth.isLoggedIn(function(error, data){
+					if(data){
+						$('#cl-logout-button').show();
+						if(data.username){
+							$('#cl-username-text').text(data.username);
+							$('#cl-username').css('display', '');
+						}
+					}else{
+						$('#cl-login-button').show();
+					}
+				});
+			});
+		</script>
+
+		<div id="spa-shell" class="container-fluid" style="margin-top: 4.5rem;">

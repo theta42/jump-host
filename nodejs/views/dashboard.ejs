@@ -1,51 +1,64 @@
 <%- include('top') %>
-<h1>Dashboard</h1>
-<div class="tiles">
-	<div class="tile"><span class="n"><%= metrics.active %></span><span class="l">active sessions</span></div>
-	<div class="tile"><span class="n"><%= metrics.total %></span><span class="l">total connections</span></div>
-	<div class="tile"><span class="n"><%= metrics.fail %></span><span class="l">failed</span></div>
+<script type="text/javascript">app.auth.forceLogin();</script>
+
+<div class="row g-3 mb-4">
+	<div class="col-6 col-md-3">
+		<div class="card shadow-sm text-center"><div class="card-body">
+			<div class="display-6" id="stat-active">–</div>
+			<div class="text-muted small text-uppercase">Active sessions</div>
+		</div></div>
+	</div>
+	<div class="col-6 col-md-3">
+		<div class="card shadow-sm text-center"><div class="card-body">
+			<div class="display-6" id="stat-total">–</div>
+			<div class="text-muted small text-uppercase">Total connections</div>
+		</div></div>
+	</div>
+	<div class="col-6 col-md-3">
+		<div class="card shadow-sm text-center"><div class="card-body">
+			<div class="display-6 text-danger" id="stat-fail">–</div>
+			<div class="text-muted small text-uppercase">Failed</div>
+		</div></div>
+	</div>
+	<div class="col-6 col-md-3">
+		<div class="card shadow-sm text-center"><div class="card-body">
+			<div class="display-6" id="stat-users">–</div>
+			<div class="text-muted small text-uppercase">Users seen</div>
+		</div></div>
+	</div>
 </div>
 
-<div class="cols">
-	<section>
-		<h2>Active sessions</h2>
-		<% if (!active.length) { %><p class="muted">None right now.</p><% } else { %>
-		<table>
-			<thead><tr><th>User</th><th>Target</th><th>Since</th></tr></thead>
-			<tbody>
-			<% active.forEach(s => { %>
-				<tr><td><%= s.uid %></td><td><%= s.slug || s.target %></td><td><%= new Date(s.startedAt).toLocaleTimeString() %></td></tr>
-			<% }) %>
-			</tbody>
-		</table>
-		<% } %>
-	</section>
-
-	<section>
-		<h2>Top hosts</h2>
-		<% if (!metrics.topHosts.length) { %><p class="muted">No data.</p><% } else { %>
-		<table><tbody>
-			<% metrics.topHosts.forEach(h => { %><tr><td><%= h.name %></td><td class="r"><%= h.count %></td></tr><% }) %>
-		</tbody></table>
-		<% } %>
-	</section>
+<div class="row g-3">
+	<div class="col-md-6">
+		<div class="card shadow-sm"><div class="card-header"><i class="fa-solid fa-server me-1"></i> Top hosts</div>
+			<table class="table table-sm mb-0"><tbody id="top-hosts"></tbody></table>
+		</div>
+	</div>
+	<div class="col-md-6">
+		<div class="card shadow-sm"><div class="card-header"><i class="fa-solid fa-user me-1"></i> Top users</div>
+			<table class="table table-sm mb-0"><tbody id="top-users"></tbody></table>
+		</div>
+	</div>
 </div>
 
-<section>
-	<h2>Recent connections <a class="more" href="/audit">view all →</a></h2>
-	<table>
-		<thead><tr><th>Time</th><th>User</th><th>Target</th><th>Method</th><th>Result</th></tr></thead>
-		<tbody>
-		<% recent.forEach(e => { %>
-			<tr>
-				<td><%= new Date(e.ts).toLocaleString() %></td>
-				<td><%= e.uid %></td>
-				<td><%= e.targetSlug || e.targetAddr || '—' %></td>
-				<td><%= e.authMethod %> / <%= e.mode %></td>
-				<td><%= e.success ? '✓' : '✗ ' + e.failReason %></td>
-			</tr>
-		<% }) %>
-		</tbody>
-	</table>
-</section>
+<script type="text/javascript">
+	function rows(sel, list){
+		var $b = $(sel).empty();
+		if(!list || !list.length){ $b.append('<tr><td class="text-muted">No data.</td></tr>'); return; }
+		list.forEach(function(x){
+			$b.append('<tr><td>' + app.jump.esc(x.name) + '</td><td class="text-end">' + x.count + '</td></tr>');
+		});
+	}
+	$(document).ready(function(){
+		app.jump.metrics(function(error, data){
+			if(error || !data) return;
+			$('#stat-active').text(data.active);
+			$('#stat-total').text(data.total);
+			$('#stat-fail').text(data.fail);
+			$('#stat-users').text((data.topUsers || []).length);
+			rows('#top-hosts', data.topHosts);
+			rows('#top-users', data.topUsers);
+		});
+	});
+</script>
 <%- include('bottom') %>

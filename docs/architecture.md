@@ -98,8 +98,10 @@ Byte counts per direction are tallied cheaply for the audit record.
 
 ## Web UI, API & audit
 
-A small Express app on `:3002` (admin login via LDAP, gated by
-`auth.adminGroups`) exposes:
+An Express + EJS + Bootstrap app on `:3002` — the same front-end stack and
+look/feel as the SSO Manager and Proxy. Login is OIDC against the SSO plus a
+local anti-lockout admin (`auth.adminUsers`), with admin access gated by
+`auth.adminGroups`. It exposes:
 
 - `GET /health` — open; `{status, activeSessions, version}`
 - `GET /api/sessions` — active sessions

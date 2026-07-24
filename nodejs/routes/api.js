@@ -1,36 +1,15 @@
 'use strict';
 
-// Auditing + metrics API (admin-gated by middleware/auth in app.js).
+const router = require('express').Router();
+const middleware = require('../middleware/auth');
 
-const express = require('express');
-const audit = require('../models/audit_event');
-const metrics = require('../models/metrics');
-const registry = require('../services/session_registry');
+// Authentication (local login + OIDC handshake). Unauthenticated by design.
+router.use('/auth', require('./auth'));
 
-const router = express.Router();
+// Who am I — needs a valid session but no admin gate (drives the login state).
+router.use('/user', middleware.auth, require('./user'));
 
-router.get('/sessions', (req, res) => {
-	res.json({ results: registry.list(), active: registry.count() });
-});
-
-router.get('/audit', async (req, res, next) => {
-	try {
-		const page = Math.max(0, parseInt(req.query.page, 10) || 0);
-		const data = await audit.list({
-			page,
-			pageSize: Math.min(200, parseInt(req.query.pageSize, 10) || 50),
-			uid: req.query.uid || undefined,
-			target: req.query.target || undefined,
-			status: req.query.status || undefined,
-		});
-		res.json(data);
-	} catch (err) { next(err); }
-});
-
-router.get('/metrics', async (req, res, next) => {
-	try {
-		res.json({ ...(await metrics.summary()), active: registry.count() });
-	} catch (err) { next(err); }
-});
+// Jump-host data — admin only (audit log, active sessions, metrics).
+router.use('/', middleware.auth, middleware.requireAdmin, require('./jump'));
 
 module.exports = router;

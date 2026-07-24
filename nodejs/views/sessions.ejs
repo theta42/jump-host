@@ -1,13 +1,30 @@
 <%- include('top') %>
-<h1>Active sessions</h1>
-<% if (!active.length) { %><p class="muted">No active sessions.</p><% } else { %>
-<table>
-	<thead><tr><th>User</th><th>Target host</th><th>Address</th><th>Started</th></tr></thead>
-	<tbody>
-	<% active.forEach(s => { %>
-		<tr><td><%= s.uid %></td><td><%= s.slug || '—' %></td><td><%= s.target %></td><td><%= new Date(s.startedAt).toLocaleString() %></td></tr>
-	<% }) %>
-	</tbody>
-</table>
-<% } %>
+<script type="text/javascript">app.auth.forceLogin();</script>
+
+<div class="card shadow-sm">
+	<div class="card-header d-flex justify-content-between align-items-center">
+		<span><i class="fa-solid fa-plug-circle-bolt me-1"></i> Active sessions</span>
+		<button class="btn btn-sm btn-outline-secondary" onclick="loadSessions()"><i class="fa-solid fa-rotate"></i></button>
+	</div>
+	<div class="table-responsive">
+		<table class="table table-striped mb-0">
+			<thead><tr><th>User</th><th>Target host</th><th>Address</th><th>Started</th></tr></thead>
+			<tbody id="sessions-body"></tbody>
+		</table>
+	</div>
+</div>
+
+<script type="text/javascript">
+	function loadSessions(){
+		app.jump.sessions(function(error, data){
+			var $b = $('#sessions-body').empty();
+			if(error || !data || !data.results.length){ $b.append('<tr><td colspan="4" class="text-muted">No active sessions.</td></tr>'); return; }
+			data.results.forEach(function(s){
+				$b.append('<tr><td>' + app.jump.esc(s.uid) + '</td><td>' + app.jump.esc(s.slug || '—') +
+					'</td><td>' + app.jump.esc(s.target) + '</td><td>' + app.jump.fmtTime(s.startedAt) + '</td></tr>');
+			});
+		});
+	}
+	$(document).ready(loadSessions);
+</script>
 <%- include('bottom') %>

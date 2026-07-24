@@ -91,9 +91,13 @@ The default SSH port is **2222** so the service needs no privilege. To listen on
 
 ## Web UI / API
 
-`https://jump.example.com/` (behind the proxy) — admin login uses your LDAP
-credentials and requires membership in `auth.adminGroups` (default
-`app_sso_admin`).
+`https://jump.example.com/` (behind the proxy) — built on the same
+Express + EJS + Bootstrap stack as the [SSO Manager](https://theta42.github.io/sso-manager-node/)
+and [Proxy](https://theta42.github.io/proxy/), so it looks and behaves like the
+rest of the stack. Login is **OIDC against the SSO** (the "Log in with SSO"
+button) plus a **local anti-lockout admin** that works even if the SSO is
+unreachable. Admin access requires membership in `auth.adminGroups` (default
+`app_sso_admin`) or being the local `auth.adminUsers` account.
 
 - `GET /health` — open; `{status, activeSessions, version}`
 - `GET /api/sessions` — active sessions
