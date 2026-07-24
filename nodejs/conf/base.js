@@ -7,6 +7,7 @@
 
 module.exports = {
 	name: 'Jump Host',
+	logo: '/static/img/theta42.svg',
 
 	// LDAP directory the users live in (same directory the SSO manages).
 	// bindDN needs: read on ou=people (users + sshPublicKey) and ou=groups,
@@ -59,11 +60,32 @@ module.exports = {
 		port: 3002,
 	},
 
+	// Web UI/API login. Same model as the proxy: OIDC against the SSO for
+	// normal users, plus a local anti-lockout admin that works even if the SSO
+	// is unreachable. OIDC endpoints + clientId/clientSecret live in the
+	// secrets file; enabled:false hides the "Log in with SSO" button.
+	oidc: {
+		enabled: false,
+		issuer: '',
+		authorizationEndpoint: '',
+		tokenEndpoint: '',
+		userinfoEndpoint: '',
+		clientId: '',
+		clientSecret: '',
+		redirectUri: '',
+		scopes: ['openid', 'profile', 'email', 'groups'],
+		groupsClaim: 'groups',
+		usernameClaim: 'preferred_username',
+	},
+
 	auth: {
-		// LDAP groups whose members may use the web UI/API.
+		// OIDC group memberships that grant web UI/API admin access.
 		adminGroups: ['app_sso_admin'],
-		// Web session lifetime (ms).
-		sessionTTLms: 12 * 60 * 60 * 1000,
+		// Local anti-lockout admin: the first name here is bootstrapped as a
+		// redis-backed user on first boot (password from localAdminPass, or a
+		// random one printed to the log once). Lets you in even with OIDC down.
+		adminUsers: ['jumpadmin'],
+		localAdminPass: '',
 	},
 
 	redis: {

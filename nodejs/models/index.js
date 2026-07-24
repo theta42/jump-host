@@ -1,8 +1,8 @@
 'use strict';
 
-// model-redis backing (same store the other stack apps use). Table is the
-// base class; getRedis() exposes the underlying node-redis client for the
-// counters and sorted-set index in models/metrics.js and models/audit_event.js.
+// model-redis backing (same store the sibling apps use). Table is the base
+// class; getRedis() exposes the underlying node-redis client for the counters
+// and sorted-set index in models/metrics.js and models/audit_event.js.
 
 const conf = require('@simpleworkjs/conf');
 const { setUpTable } = require('model-redis');
@@ -31,5 +31,8 @@ async function getRedis() {
 
 module.exports.getRedis = getRedis;
 
-require('./session');
+// Register models (order matters: User before AuthToken's relation resolves).
+require('./user_redis');
+require('./token');
+require('./oidc_state');
 require('./audit_event');

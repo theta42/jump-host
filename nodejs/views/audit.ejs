@@ -1,39 +1,62 @@
 <%- include('top') %>
-<h1>Audit log</h1>
-<form class="filters" method="get">
-	<input name="uid" placeholder="user" value="<%= query.uid || '' %>">
-	<input name="target" placeholder="target" value="<%= query.target || '' %>">
-	<select name="status">
-		<option value="">any</option>
-		<option value="success" <%= query.status === 'success' ? 'selected' : '' %>>success</option>
-		<option value="fail" <%= query.status === 'fail' ? 'selected' : '' %>>fail</option>
-	</select>
-	<button>Filter</button>
-</form>
+<script type="text/javascript">app.auth.forceLogin();</script>
 
-<table>
-	<thead><tr><th>Time</th><th>User</th><th>Method</th><th>Mode</th><th>Target</th><th>Chan</th><th>Client</th><th>Result</th><th>Bytes</th></tr></thead>
-	<tbody>
-	<% data.results.forEach(e => { %>
-		<tr class="<%= e.success ? '' : 'bad' %>">
-			<td><%= new Date(e.ts).toLocaleString() %></td>
-			<td><%= e.uid %></td>
-			<td><%= e.authMethod %></td>
-			<td><%= e.mode %></td>
-			<td><%= e.targetSlug || e.targetAddr || '—' %></td>
-			<td><%= e.channel || '—' %></td>
-			<td><%= e.clientIp %></td>
-			<td><%= e.success ? '✓' : '✗ ' + e.failReason %></td>
-			<td class="r"><%= (e.bytesIn + e.bytesOut) || 0 %></td>
-		</tr>
-	<% }) %>
-	</tbody>
-</table>
-
-<div class="pager">
-	<% const p = data.page; %>
-	<% if (p > 0) { %><a href="?page=<%= p-1 %>&uid=<%= query.uid||'' %>&target=<%= query.target||'' %>&status=<%= query.status||'' %>">← prev</a><% } %>
-	<span><%= data.total %> events</span>
-	<% if ((p+1) * data.pageSize < data.total) { %><a href="?page=<%= p+1 %>&uid=<%= query.uid||'' %>&target=<%= query.target||'' %>&status=<%= query.status||'' %>">next →</a><% } %>
+<div class="card shadow-sm">
+	<div class="card-header"><i class="fa-solid fa-clipboard-list me-1"></i> Audit log</div>
+	<div class="card-body pb-0">
+		<form class="row g-2 mb-2" onsubmit="applyFilters(); return false;">
+			<div class="col-auto"><input class="form-control form-control-sm" id="f-uid" placeholder="user"></div>
+			<div class="col-auto"><input class="form-control form-control-sm" id="f-target" placeholder="target"></div>
+			<div class="col-auto">
+				<select class="form-select form-select-sm" id="f-status">
+					<option value="">any result</option>
+					<option value="success">success</option>
+					<option value="fail">fail</option>
+				</select>
+			</div>
+			<div class="col-auto"><button class="btn btn-sm btn-primary">Filter</button></div>
+		</form>
+	</div>
+	<div class="table-responsive">
+		<table class="table table-striped table-sm mb-0">
+			<thead><tr><th>Time</th><th>User</th><th>Method</th><th>Mode</th><th>Target</th><th>Chan</th><th>Client</th><th>Result</th><th class="text-end">Bytes</th></tr></thead>
+			<tbody id="audit-body"></tbody>
+		</table>
+	</div>
+	<div class="card-footer d-flex justify-content-between align-items-center">
+		<button class="btn btn-sm btn-outline-secondary" id="prev" onclick="changePage(-1)">&larr; prev</button>
+		<span class="text-muted small" id="page-info"></span>
+		<button class="btn btn-sm btn-outline-secondary" id="next" onclick="changePage(1)">next &rarr;</button>
+	</div>
 </div>
+
+<script type="text/javascript">
+	var page = 0;
+	function filters(){ return {page: page, uid: $('#f-uid').val(), target: $('#f-target').val(), status: $('#f-status').val()}; }
+	function applyFilters(){ page = 0; load(); }
+	function changePage(d){ page = Math.max(0, page + d); load(); }
+	function load(){
+		app.jump.audit(filters(), function(error, data){
+			var $b = $('#audit-body').empty();
+			if(error || !data || !data.results.length){ $b.append('<tr><td colspan="9" class="text-muted">No events.</td></tr>'); }
+			else data.results.forEach(function(e){
+				$b.append('<tr class="' + (e.success ? '' : 'table-danger') + '">' +
+					'<td>' + app.jump.fmtTime(e.ts) + '</td>' +
+					'<td>' + app.jump.esc(e.uid) + '</td>' +
+					'<td>' + app.jump.esc(e.authMethod) + '</td>' +
+					'<td>' + app.jump.esc(e.mode) + '</td>' +
+					'<td>' + app.jump.esc(e.targetSlug || e.targetAddr || '—') + '</td>' +
+					'<td>' + app.jump.esc(e.channel || '—') + '</td>' +
+					'<td>' + app.jump.esc(e.clientIp) + '</td>' +
+					'<td>' + app.jump.result(e) + '</td>' +
+					'<td class="text-end">' + ((e.bytesIn + e.bytesOut) || 0) + '</td></tr>');
+			});
+			var total = data ? data.total : 0, size = data ? data.pageSize : 50;
+			$('#page-info').text(total + ' events · page ' + (page + 1));
+			$('#prev').prop('disabled', page === 0);
+			$('#next').prop('disabled', (page + 1) * size >= total);
+		});
+	}
+	$(document).ready(load);
+</script>
 <%- include('bottom') %>

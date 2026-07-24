@@ -1,37 +1,42 @@
 'use strict';
 
-const path = require('path');
 const express = require('express');
-const conf = require('@simpleworkjs/conf');
+const compression = require('compression');
 
-const registry = require('./services/session_registry');
-const { requireAdmin } = require('./middleware/auth');
-const buildInfo = require('./models/build_info');
+require('./models'); // wire model-redis + register models
 
 const app = express();
 
 app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-app.use('/public', express.static(path.join(__dirname, 'public')));
+app.set('views', require('path').join(__dirname, 'views'));
 
-// Open health check — no auth (used by Docker/compose + the proxy).
-app.get('/health', (req, res) => {
-	res.json({ status: 'ok', activeSessions: registry.count(), version: buildInfo.version, commit: buildInfo.commit });
+app.use(compression());
+app.use(express.json());
+app.use(express.urlencoded({extended: false}));
+
+// Page shells + static assets + /health (mostly unauthenticated; the client
+// gates itself on /api/user/me and redirects to /login).
+app.use('/', require('./routes/render'));
+
+// API — auth handled per-router inside (see routes/api.js).
+app.use('/api', require('./routes/api'));
+
+// 404
+app.use((req, res, next) => {
+	const error = new Error('Not Found');
+	error.status = 404;
+	next(error);
 });
 
-// Login routes (no session required).
-app.use('/', require('./routes/auth'));
-
-// Everything else requires an admin session.
-app.use(requireAdmin);
-app.use('/api', require('./routes/api'));
-app.use('/', require('./routes/index'));
-
+// Error handler — JSON for API, redirect to login for pages on 401.
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-	console.error(err);
-	if (req.path.startsWith('/api/')) return res.status(500).json({ error: err.message });
-	res.status(500).render('login', { error: 'Internal error.', name: conf.name });
+	const status = err.status || 500;
+	if(status >= 500) console.error(err);
+	if(req.path.startsWith('/api/')){
+		return res.status(status).json({name: err.name || 'Error', message: err.message || 'Error'});
+	}
+	res.status(status).send(err.message || 'Error');
 });
 
 module.exports = app;

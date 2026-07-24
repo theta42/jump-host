@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.1.0] - 2026-07-23
+
+### Changed
+- **Rebuilt the web UI on the shared theta42 app stack** so it looks and behaves like the SSO Manager and Proxy: Express + EJS with the same `top.ejs`/`bottom.ejs` shell, Bootstrap 5, jQuery, jq-repeat, FontAwesome, the shared `app-base.js` client framework, and Socket.IO — replacing the bespoke minimal theme. Dashboard, Sessions, and Audit pages now render in the common look/feel.
+- **Web-UI auth is now OIDC + a local anti-lockout admin** (the proxy's model), replacing the direct LDAP-bind login. Normal users log in through the SSO ("Log in with SSO"); a local `auth.adminUsers` account (bootstrapped on first boot, password from `auth.localAdminPass`) still works if the SSO is unreachable. Admin access is gated by `auth.adminGroups` or the local admin account. New config: `oidc` block + `auth.adminUsers`/`localAdminPass`. **Note:** the SSH bridge and its own LDAP auth are unchanged — this only affects the web management UI.
+
 ## [1.0.1] - 2026-07-23
 
 ### Fixed
