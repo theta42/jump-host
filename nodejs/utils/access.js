@@ -16,20 +16,23 @@
 // unit testing.
 
 const conf = require('@simpleworkjs/conf');
+const { createDirectoryClient } = require('@simpleworkjs/directory-schema');
 const userLdap = require('../models/user_ldap');
 
 const CACHE_TTL_MS = 30 * 1000;
 const cache = new Map(); // uid -> {at, hosts}
 
-async function fetchResourcesByGroup(group, { fetchImpl = fetch } = {}) {
+// Build a directory client bound to conf.sso. fetchImpl is injectable so the
+// unit tests can stub the transport; the shared client validates the
+// `{ results }` envelope on every call (turns the old bare-array drift into a
+// thrown error instead of a silent `[]`).
+function directoryClient({ fetchImpl = fetch } = {}) {
 	const sso = conf.sso || {};
-	const url = `${sso.url}/api/discovery/resources?group=${encodeURIComponent(group)}`;
-	const res = await fetchImpl(url, {
-		headers: { Authorization: `Bearer ${sso.apiToken}` },
-	});
-	if (!res.ok) throw new Error(`directory query failed (${res.status}) for group ${group}`);
-	const data = await res.json();
-	return (data && data.results) || [];
+	return createDirectoryClient({ baseUrl: sso.url, apiToken: sso.apiToken, fetch: fetchImpl });
+}
+
+async function fetchResourcesByGroup(group, { fetchImpl = fetch } = {}) {
+	return directoryClient({ fetchImpl }).getResourcesByGroup(group);
 }
 
 async function accessibleHosts(user, { fetchImpl = fetch, ldap = userLdap } = {}) {

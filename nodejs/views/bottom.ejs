@@ -6,7 +6,7 @@
 					<a href="https://theta42.com" target="_blank">
 						<img width="64" src="/static/img/theta42.svg"/>
 					</a>
-					&copy; <%- (new Date()).getFullYear() %> theta42 &middot;
+					&copy; <%- buildYear %> theta42 &middot;
 					<a href="https://github.com/theta42/jump-host/blob/master/LICENSE" target="_blank" class="text-light">MIT License</a>
 				</span>
 				<span class="d-flex align-items-center gap-3">
@@ -17,7 +17,7 @@
 						<i class="fa-brands fa-github"></i> GitHub
 					</a>
 				</span>
-				<span>v<%- version %> (<%- commit %>)</span>
+				<span>v<%- buildVersion %> (<%- buildHash %>)</span>
 			</div>
 		</footer>
 	</body>
