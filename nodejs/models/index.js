@@ -6,6 +6,7 @@
 
 const conf = require('@simpleworkjs/conf');
 const { setUpTable } = require('model-redis');
+const { createOidcClient, bootstrapLocalAdmin } = require('@simpleworkjs/oidc-client');
 
 const Table = setUpTable(conf.redis);
 
@@ -32,7 +33,20 @@ async function getRedis() {
 module.exports.getRedis = getRedis;
 
 // Register models (order matters: User before AuthToken's relation resolves).
-require('./user_redis');
-require('./token');
-require('./oidc_state');
+require('./user_redis');      // User (redis-backed local + OIDC JIT)
+
+// Shared OIDC client (authorization-code + PKCE): session models (Token,
+// AuthToken, OidcState), the Auth service, and the /login /logout /oidc/start
+// /oidc/callback router — all created on this app's Table/redis. jump-host has
+// no Bearer PATs, so checkApiToken is omitted (Auth.checkApiToken is absent).
+const oidcClient = createOidcClient({ Table });
+module.exports.Token = oidcClient.Token;
+module.exports.AuthToken = oidcClient.AuthToken;
+module.exports.OidcState = oidcClient.OidcState;
+module.exports.Auth = oidcClient.Auth;
+module.exports.authRouter = oidcClient.router;
+
 require('./audit_event');
+
+// Idempotent anti-lockout local admin (was the IIFE in user_redis.js).
+bootstrapLocalAdmin(Table.models.User, { defaultName: 'jumpadmin' });

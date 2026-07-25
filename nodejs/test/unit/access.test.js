@@ -53,3 +53,17 @@ test('caches per uid', async () => {
 	await accessibleHosts(user, { fetchImpl, ldap });
 	assert.strictEqual(calls, 1);
 });
+
+test('a bare-array response (envelope drift) is treated as a failed group, not silently []', async () => {
+	clearCache();
+	const user = { uid: 'dave', dn: 'd' };
+	// drift shape: a bare array instead of { results: [...] }. The shared client
+	// throws DirectoryEnvelopeViolation; access.js must catch + continue, so a
+	// good group alongside still yields its hosts.
+	const fetchImpl = async (url) => {
+		if (url.includes('drift')) return { ok: true, json: async () => [{ id: '7', kind: 'host' }] };
+		return { ok: true, json: async () => ({ results: [{ id: '8', kind: 'host' }] }) };
+	};
+	const hosts = await accessibleHosts(user, { fetchImpl, ldap: stubLdap(['drift_access', 'good_access']) });
+	assert.deepStrictEqual(hosts.map((h) => h.id), ['8']);
+});

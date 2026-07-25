@@ -4,8 +4,10 @@ const path = require('path');
 const express = require('express');
 const router = require('express').Router();
 const conf = require('@simpleworkjs/conf');
-const buildInfo = require('../models/build_info');
+const buildInfo = require('../utils/build_info');
 const registry = require('../services/session_registry');
+const { safeInternalPath } = require('@simpleworkjs/oidc-client');
+const { mountStaticModules } = require('@simpleworkjs/app-stack');
 
 const values = {
 	title: conf.environment !== 'production' ? 'dev' : '',
@@ -17,15 +19,14 @@ const values = {
 
 // Serve front-end vendor libraries straight from node_modules (same convention
 // as the sibling apps), and the app's own JS/CSS/img from public/.
-const frontEndModules = ['bootstrap', 'mustache', 'jquery', '@fortawesome', 'moment', 'jq-repeat'];
-frontEndModules.forEach(dep => {
-	router.use(`/static-modules/${dep}`, express.static(path.join(__dirname, `../node_modules/${dep}`), {maxAge: '7d'}));
+mountStaticModules(router, {
+	root: path.join(__dirname, '..'),
+	deps: ['bootstrap', 'mustache', 'jquery', '@fortawesome', 'moment', 'jq-repeat'],
 });
-router.use('/static', express.static(path.join(__dirname, '../public'), {maxAge: '1h'}));
 
 // Liveness probe — no auth.
 router.get('/health', (req, res) => {
-	res.json({status: 'ok', activeSessions: registry.count(), version: buildInfo.version, commit: buildInfo.commit});
+	res.json({status: 'ok', activeSessions: registry.count(), buildVersion: buildInfo.buildVersion, buildHash: buildInfo.buildHash});
 });
 
 router.get('/', (req, res) => res.redirect(302, '/dashboard'));
@@ -36,7 +37,7 @@ router.get('/', (req, res) => res.redirect(302, '/dashboard'));
 // /login when there's no valid session.
 router.get('/login', (req, res) => res.render('login', {
 	...values,
-	redirect: '/',
+	redirect: safeInternalPath(req.query.redirect || '/'),
 	oidcEnabled: !!(conf.oidc && conf.oidc.enabled),
 }));
 router.get('/dashboard', (req, res) => res.render('dashboard', {...values}));

@@ -255,13 +255,15 @@ app.auth = (function(app){
 		app.auth.isLoggedIn(function(error, isLoggedIn){
 			if(error || !isLoggedIn){
 				app.auth.logOut(function(){})
-				location.replace(`/login${location.href.replace(location.origin, '')}`);
+				var path = location.href.replace(location.origin, '');
+				location.replace('/login?redirect=' + encodeURIComponent(path));
 			}
 		});
 	}
 
 	function logInRedirect(){
-		window.location.href = safeInternalPath(location.href.replace(location.origin+'/login', '') || '/')
+		var params = new URLSearchParams(location.search);
+		window.location.href = safeInternalPath(params.get('redirect') || '/');
 	}
 
 	return {

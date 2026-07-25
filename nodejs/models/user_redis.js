@@ -3,7 +3,6 @@
 const Table = require('.');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const conf = require('@simpleworkjs/conf');
 const saltRounds = 10;
 
 class User extends Table{
@@ -86,38 +85,6 @@ class User extends Table{
 
 User.register();
 
-(async function(){
-	// The anti-lockout local admin: the first entry in conf.auth.adminUsers
-	// (default 'jumpadmin'). A local login that works even if the SSO/OIDC is
-	// unreachable — the whole point of "OIDC + internal users".
-	var defaultUser = (conf.auth && conf.auth.adminUsers && conf.auth.adminUsers[0]) || 'jumpadmin';
-	// Optional: an orchestrator (e.g. theta-env's setup.sh) can set
-	// auth.localAdminPass in jump-secrets.js to a generated password so this
-	// bootstrap account isn't left at a well-known default. Only used on first
-	// creation -- once the account exists this is never read again, so it's
-	// safe to leave set. If unset, a random password is generated and printed
-	// once; save it from the log or set auth.localAdminPass explicitly.
-	var defaultPass = (conf.auth && conf.auth.localAdminPass);
-	if (!defaultPass) {
-		defaultPass = crypto.randomBytes(16).toString('hex');
-		console.warn(`====================================================================`);
-		console.warn(`Bootstrap admin "${defaultUser}" created with random password:`);
-		console.warn(`${defaultPass}`);
-		console.warn(`Set auth.localAdminPass in your secrets file to make this deterministic.`);
-		console.warn(`====================================================================`);
-	}
-	try{
-		let user = await User.get(defaultUser);
-	}catch(error){
-		try{
-			let user = await User.create({
-				username:defaultUser,
-				password: defaultPass,
-				created_by: defaultUser
-			});
-			console.log(defaultUser, 'created');
-		}catch(error){
-			console.error(error)
-		}
-	}
-})();
+// Anti-lockout local-admin bootstrap moved to @simpleworkjs/oidc-client
+// (bootstrapLocalAdmin); invoked once from models/index.js after User is
+// registered. See the package lib/bootstrap.js for the original logic.

@@ -5,7 +5,7 @@
 // callback. The token carries the group snapshot captured at login.
 
 const conf = require('@simpleworkjs/conf');
-const { Auth } = require('../models/auth');
+const { Auth } = require('../models');
 
 async function auth(req, res, next){
 	try{
