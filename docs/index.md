@@ -21,6 +21,15 @@ Part of the theta42 self-hosted identity stack, alongside
 [Proxy](https://theta42.github.io/proxy/), composable with one command via
 [theta-env](https://theta42.github.io/theta-env/).
 
+## Screenshots
+
+<a href="images/login.png" target="_blank"><img src="images/login.png" alt="Login" width="49%"></a>
+<a href="images/dashboard.png" target="_blank"><img src="images/dashboard.png" alt="Dashboard" width="49%"></a>
+<a href="images/sessions.png" target="_blank"><img src="images/sessions.png" alt="Active sessions" width="49%"></a>
+<a href="images/audit.png" target="_blank"><img src="images/audit.png" alt="Audit log" width="49%"></a>
+
+*(click any screenshot to view full size)*
+
 ## Two ways to connect
 
 **Direct (WinSCP/SFTP-friendly):**
