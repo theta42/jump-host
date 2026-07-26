@@ -10,6 +10,11 @@ const app = express();
 app.set('view engine', 'ejs');
 app.set('views', require('path').join(__dirname, 'views'));
 
+// Per-app values for the shared UI shell (views/top.ejs + views/bottom.ejs).
+// Set as an app local so every res.render has it, including routes that don't
+// spread the render router's `values` object.
+app.locals.ui = require('./utils/ui');
+
 app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({extended: false}));
