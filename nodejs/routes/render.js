@@ -21,7 +21,7 @@ const values = {
 // as the sibling apps), and the app's own JS/CSS/img from public/.
 mountStaticModules(router, {
 	root: path.join(__dirname, '..'),
-	deps: ['bootstrap', 'mustache', 'jquery', '@fortawesome', 'moment', 'jq-repeat'],
+	deps: ['bootstrap', 'mustache', 'jquery', '@fortawesome', 'moment', 'jq-repeat', '@simpleworkjs/frontend'],
 });
 
 // Liveness probe — no auth.
