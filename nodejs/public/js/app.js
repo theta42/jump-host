@@ -15,6 +15,15 @@ app.jump = (function(app){
 	return {metrics: metrics, sessions: sessions, audit: audit, hosts: hosts};
 })(app);
 
+// Self-service API token (PAT) management.
+app.apiToken = (function(app){
+	function list(cb){ app.api.get('api-token/', cb); }
+	function add(args, cb){ app.api.post('api-token/', args, cb); }
+	function remove(id, cb){ app.api.delete('api-token/' + id, cb); }
+	function rotate(id, cb){ app.api.post('api-token/' + id + '/rotate', {}, cb); }
+	return {list: list, add: add, remove: remove, rotate: rotate};
+})(app);
+
 // Shared render helpers.
 app.jump.fmtTime = function(ts){ return ts ? moment(Number(ts)).format('YYYY-MM-DD HH:mm:ss') : '—'; };
 app.jump.esc = function(s){ return $('<div>').text(s == null ? '' : String(s)).html(); };

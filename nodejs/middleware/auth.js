@@ -9,6 +9,24 @@ const { Auth } = require('../models');
 
 async function auth(req, res, next){
 	try{
+		// API-only token: `Authorization: Bearer jmp_<id>_<secret>`. Carries no
+		// group claims (see models/api_token.js), so it authenticates as its
+		// creator but never passes requireAdmin below.
+		const authz = req.header('authorization') || '';
+		if(authz.slice(0, 7).toLowerCase() === 'bearer '){
+			const t = await Auth.checkApiToken(authz.slice(7));
+			req.token = {
+				user: {username: t.created_by},
+				created_by: t.created_by,
+				groupsArray: () => [],
+				check: () => true,
+				is_valid: true,
+			};
+			req.user = req.token.user;
+			req.groups = [];
+			return next();
+		}
+
 		req.token = await Auth.checkToken(req.header('auth-token'));
 		req.user = req.token.user;
 		req.groups = typeof req.token.groupsArray === 'function' ? req.token.groupsArray() : [];
