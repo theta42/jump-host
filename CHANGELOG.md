@@ -4,6 +4,17 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.4.0] - 2026-07-26
+
+### Added
+- **Standalone mode** — run the jump host with no LDAP directory and no SSO Manager at all. Set `standalone.enabled: true` and user authentication and host discovery switch to `@simpleworkjs/orm`-backed stores (Sequelize; SQLite by default, any Sequelize-supported dialect via `conf.orm`) instead of the directory services. `models/user_ldap.js` and `utils/access.js` become conditional facades that pick their backend at require time — `ssh_server.js`, `bridge.js`, `key_inject.js`, `tui_picker.js`, and the web UI are unchanged either way.
+- New ORM models: `StandaloneUser` (`uid`, `passwordHash`, `sshPublicKeys`, `groups`) and `StandaloneHost` (`slug`, `displayName`, `kind`, `metadata`), plus `models/user_file.js` and `utils/hosts_file.js`, which implement the same interfaces as the LDAP client and `accessibleHosts()` respectively. There's no admin UI for standalone users/hosts yet — see the README's "Standalone mode" section for the ORM-model seeding snippet. In standalone mode every stored host is reachable by every stored user; there's no group-based authorization yet.
+- 47 tests pass (24 existing + 15 new unit + 3 existing integration + 5 new standalone integration).
+
+### Fixed
+- **`services/ssh_server.js` used `|| 2222` for the listen port**, so an explicit `listenPort: 0` (ephemeral port, used by the test suite) was silently overridden back to 2222. Changed to `?? 2222`.
+- **`services/ssh_server.js` awaited `audit.create()` before registering session listeners.** A client that sends `exec`/`shell` immediately after connecting could have its request dropped because nothing was listening yet. Listener registration now happens first.
+
 ## [1.3.0] - 2026-07-26
 
 ### Changed

@@ -1,5 +1,5 @@
 title: Jump Host
-description: An SSH jump host for the theta42 stack — LDAP-authenticated, directory-driven host bridging with audit and metrics.
+description: An SSH jump host for the theta42 stack — directory-driven host bridging with audit and metrics; LDAP + SSO Manager by default, or fully standalone.
 url: "https://theta42.github.io"
 baseurl: "/jump-host"
 logo: /assets/img/theta42.svg

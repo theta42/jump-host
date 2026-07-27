@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Installation
-description: Install the jump host three ways — bundled in the theta-env stack, standalone Docker, or bare metal — plus the required LDAP write-ACL and port-22 options.
+description: Install the jump host three ways — bundled in the theta-env stack, standalone Docker, or bare metal — plus standalone mode (no LDAP/SSO), the LDAP write-ACL, and port-22 options.
 ---
 
 # Installation
@@ -9,6 +9,51 @@ description: Install the jump host three ways — bundled in the theta-env stack
 Three ways to run the jump host, in increasing manual effort. All read their
 config through [@simpleworkjs/conf](https://www.npmjs.com/package/@simpleworkjs/conf)
 (`conf/base.js` < `conf/<NODE_ENV>.js` < the `CONF_SECRETS` file < `app_*` env).
+
+## Standalone mode (no LDAP/SSO) {#standalone-mode}
+
+Skip LDAP and the SSO Manager entirely. Not to be confused with "Standalone
+Docker" below, which is still LDAP + SSO, just run outside theta-env. Set in your secrets/config:
+
+```js
+standalone: { enabled: true },
+orm: { dialect: 'sqlite', storage: './data/standalone.sqlite', logging: false },
+```
+
+`orm` is passed straight to Sequelize, so any supported dialect works — SQLite
+is just the zero-dependency default. Everything downstream of auth (bridging,
+key injection, the web UI, audit) is unchanged.
+
+There's no admin UI for standalone users/hosts yet, so add them directly with
+the ORM models:
+
+```js
+const StandaloneUser = require('./models/standalone_user');
+const StandaloneHost = require('./models/standalone_host');
+const bcrypt = require('bcrypt');
+
+await StandaloneUser.create({
+  uid: 'alice',
+  passwordHash: await bcrypt.hash('a real password', 10),
+  sshPublicKeys: ['ssh-ed25519 AAAA... alice@laptop'],
+  groups: [],
+});
+
+await StandaloneHost.create({
+  slug: 'host_web01',
+  displayName: 'web01',
+  kind: 'host',
+  metadata: { ip: '10.0.0.5', sshPort: 22 },
+});
+```
+
+Every host in the standalone inventory is reachable by every standalone user —
+there's no group-based authorization yet (`groups` on `StandaloneUser` is
+accepted for interface parity with the LDAP path, not enforced).
+
+The rest of this page (requirements, the LDAP write-ACL, the three install
+paths) describes the default LDAP + SSO mode — skip it if you're running
+standalone.
 
 ## Requirements
 

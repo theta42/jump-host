@@ -112,6 +112,28 @@ Audit events and counters live in redis. Each event captures: user, auth method,
 mode (grammar/picker), target slug/address/port, channel type, client IP,
 success + failure reason, downstream host-key fingerprint, timing, and bytes in/out.
 
+## Standalone mode
+
+Everything above describes the default backend. Set `standalone.enabled: true`
+and two modules become conditional facades, swapping their entire
+implementation at `require` time based on that flag — nothing else in the
+codebase (`ssh_server.js`, `bridge.js`, `key_inject.js`, `tui_picker.js`, the
+web UI) changes or even knows which mode it's running in:
+
+- **`models/user_ldap.js`** — LDAP client, or `models/user_file.js` (an
+  [@simpleworkjs/orm](https://www.npmjs.com/package/@simpleworkjs/orm)-backed
+  store implementing the same `getUser` / `getGroups` / `checkPassword` /
+  `addSshKey` interface).
+- **`utils/access.js`** — LDAP groups + SSO `/api/discovery`, or
+  `utils/hosts_file.js` (same ORM package, same `accessibleHosts()` interface).
+  In standalone mode there's no group-based authorization: every stored host
+  is accessible to every stored user.
+
+The ORM is Sequelize underneath, defaulting to a local SQLite file but
+accepting any Sequelize-supported dialect via `conf.orm`. See
+[Installation](installation.html#standalone-mode) for config and how to add
+users/hosts (there's no admin UI for standalone data yet).
+
 ## Where it sits in the stack
 
 - **[SSO Manager](https://theta42.github.io/sso-manager-node/)** — provides the
