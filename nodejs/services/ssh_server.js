@@ -147,12 +147,20 @@ async function resolveAndConnect(state, record, { onHostKey } = {}) {
 function fail(reason) { const e = new Error(reason); e.reason = reason; return e; }
 
 async function runGrammar(session, client, state) {
-	const record = await audit.create({ uid: state.uid, authMethod: state.authMethod, clientIp: state.clientIp, mode: 'grammar' });
-
-	// Deferred upstream — attach the bridge NOW, resolve/reject after connect.
+	// Register session listeners IMMEDIATELY — before any async work.
+	// The client sends exec/shell requests right after opening the session;
+	// if we await audit.create() first, those requests arrive before the
+	// listeners are registered and ssh2 rejects them with CHANNEL_FAILURE.
 	let resolveUp, rejectUp;
 	const upstreamPromise = new Promise((res, rej) => { resolveUp = res; rejectUp = rej; });
-	attachSession(session, upstreamPromise, record);
+	const dummyAudit = { patch() {}, finish() {}, event: {} };
+	attachSession(session, upstreamPromise, dummyAudit);
+
+	const record = await audit.create({ uid: state.uid, authMethod: state.authMethod, clientIp: state.clientIp, mode: 'grammar' });
+	// Wire the real audit record into the already-attached session.
+	dummyAudit.patch = (...a) => record.patch(...a);
+	dummyAudit.finish = (...a) => record.finish(...a);
+	Object.defineProperty(dummyAudit, 'event', { get: () => record.event });
 
 	try {
 		const { upstream, host, endpoint } = await resolveAndConnect(state, record, {
@@ -280,7 +288,7 @@ function start() {
 		}
 	);
 
-	const port = (conf.ssh && conf.ssh.listenPort) || 2222;
+	const port = (conf.ssh && conf.ssh.listenPort) ?? 2222;
 	const host = (conf.ssh && conf.ssh.listenHost) || '0.0.0.0';
 	server.listen(port, host, () => {
 		console.log(`[ssh] jump host listening on ${host}:${server.address().port}`);

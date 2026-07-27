@@ -98,6 +98,21 @@ module.exports = {
 		maxEvents: 50000,
 	},
 
+	// Standalone mode: run without LDAP or SSO Manager. When enabled, user
+	// authentication and host discovery use @simpleworkjs/orm-backed stores
+	// (Sequelize, defaulting to SQLite) instead of the directory services.
+	standalone: {
+		enabled: false,
+	},
+
+	// ORM config for standalone mode. Passed through to Sequelize — any dialect
+	// works. Defaults to SQLite for zero-dependency local dev.
+	orm: {
+		dialect: 'sqlite',
+		storage: './data/standalone.sqlite',
+		logging: false,
+	},
+
 	// Orchestrator-only keys (ignored by the app, read by theta-env).
 	stack: {},
 };

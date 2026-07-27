@@ -25,6 +25,7 @@
     "@simpleworkjs/ldap": "^1.0.0",
     "@simpleworkjs/directory-schema": "^1.0.0",
     "@simpleworkjs/oidc-client": "^1.0.0",
+    "@simpleworkjs/orm": "^0.2.8",
     "bcrypt": "^6.0.0",
     "bootstrap": "^5.3.8",
     "compression": "^1.8.1",
