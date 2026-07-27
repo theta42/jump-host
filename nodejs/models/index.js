@@ -50,3 +50,17 @@ require('./audit_event');
 
 // Idempotent anti-lockout local admin (was the IIFE in user_redis.js).
 bootstrapLocalAdmin(Table.models.User, { defaultName: 'jumpadmin' });
+
+// Standalone mode: initialize @simpleworkjs/orm for local user/host stores.
+// The ORM must be loaded before any code calls user_ldap or access — both of
+// which check conf.standalone.enabled at require time and may delegate to the
+// ORM-backed wrappers. Model registration is synchronous; table sync is async
+// but the first query will implicitly wait (Sequelize.sync is in-flight).
+// Export the promise so integration tests can await it before seeding data.
+let ormReady = Promise.resolve();
+if (conf.standalone && conf.standalone.enabled) {
+	const { init } = require('@simpleworkjs/orm');
+	const ormConf = conf.orm || { dialect: 'sqlite', storage: './data/standalone.sqlite', logging: false };
+	ormReady = init({ conf: { orm: ormConf }, models: [require('./standalone_user'), require('./standalone_host')] });
+}
+module.exports.ormReady = ormReady;

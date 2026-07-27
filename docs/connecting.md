@@ -74,6 +74,10 @@ changes.
 Targets that don't resolve to a host you're allowed to reach are refused (and
 audited). Raw IPs that aren't a known directory host are denied by default.
 
+> On a [standalone](architecture.html#standalone-mode) jump host (no LDAP/SSO),
+> every registered host is reachable by every registered user — there's no
+> group-based restriction to ask an admin about.
+
 ## Authentication
 
 The jump host authenticates **you** against the directory:

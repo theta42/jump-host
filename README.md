@@ -2,9 +2,13 @@
 
 An SSH jump host for the [theta42](https://github.com/theta42) self-hosted
 stack. Users SSH into one public host and land on any downstream host they're
-entitled to — authenticated against the shared LDAP directory, authorized from
-the [SSO Manager](https://github.com/theta42/sso-manager-node)'s inventory
-graph, audited end to end.
+entitled to — audited end to end.
+
+Two backends, same SSH front door and audit trail: the default mode
+authenticates against the shared LDAP directory and authorizes from the
+[SSO Manager](https://github.com/theta42/sso-manager-node)'s inventory graph;
+**standalone mode** (below) runs with no LDAP or SSO at all, storing users and
+hosts in a local SQL database instead.
 
 ## Two ways to connect
 
@@ -44,7 +48,52 @@ bridged straight in.
 4. **Bridge** — shell, exec, and the SFTP subsystem are spliced to the
    downstream sshd. Every session is audited.
 
+## Standalone mode
+
+Run without LDAP or the SSO Manager at all. Set `standalone.enabled: true` and
+the jump host stores users and hosts itself, via
+[@simpleworkjs/orm](https://www.npmjs.com/package/@simpleworkjs/orm)
+(Sequelize under the hood — defaults to a local SQLite file, but any
+Sequelize-supported dialect works via `conf.orm`):
+
+```js
+standalone: { enabled: true },
+orm: { dialect: 'sqlite', storage: './data/standalone.sqlite', logging: false },
+```
+
+Everything else — the SSH front door, key injection, bridging, the web UI and
+audit trail — is unchanged; only where users/hosts live and how passwords are
+checked differs. There's no admin UI for standalone users/hosts yet — add them
+with the ORM models directly:
+
+```js
+const StandaloneUser = require('./models/standalone_user');
+const StandaloneHost = require('./models/standalone_host');
+const bcrypt = require('bcrypt');
+
+await StandaloneUser.create({
+  uid: 'alice',
+  passwordHash: await bcrypt.hash('a real password', 10),
+  sshPublicKeys: ['ssh-ed25519 AAAA... alice@laptop'],
+  groups: [],
+});
+
+await StandaloneHost.create({
+  slug: 'host_web01',
+  displayName: 'web01',
+  kind: 'host',
+  metadata: { ip: '10.0.0.5', sshPort: 22 },
+});
+```
+
+In standalone mode every stored host is reachable by every stored user — there
+is no group-based authorization (the `groups` field on `StandaloneUser` is
+accepted for interface parity but not yet enforced).
+
 ## Requirements
+
+*(default LDAP + SSO mode — see [Standalone mode](#standalone-mode) to skip
+all of this)*
 
 - The SSO Manager (OpenLDAP directory + `/api/discovery`).
 - Downstream hosts joined via ldap-client (SSSD + `AuthorizedKeysCommand`).

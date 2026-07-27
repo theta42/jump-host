@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Home
-description: An SSH jump host for the theta42 stack — one public host, LDAP login, and directory-driven access to every downstream machine you're entitled to.
+description: An SSH jump host for the theta42 stack — one public host and directory-driven access to every downstream machine you're entitled to; LDAP by default, or fully standalone.
 ---
 
 # Jump Host
@@ -29,6 +29,12 @@ Part of the theta42 self-hosted identity stack, alongside
 <a href="images/audit.png" target="_blank"><img src="images/audit.png" alt="Audit log" width="49%"></a>
 
 *(click any screenshot to view full size)*
+
+Don't want to run LDAP or the SSO Manager? **Standalone mode** stores users
+and hosts in a local SQL database instead (SQLite by default, any
+Sequelize-supported dialect if you want something else) — same SSH front door,
+key injection, and audit trail. See
+[Installation](installation.html#standalone-mode) to get started.
 
 ## Two ways to connect
 
@@ -88,6 +94,8 @@ This jump host answers both from your directory:
   audit log, per-user/per-host counters
 - **Full audit trail** — who, target, method, result, bytes, duration, and the
   downstream host-key fingerprint
+- **Standalone mode** — no LDAP, no SSO Manager; users and hosts live in a
+  local SQL database (Sequelize, any dialect — SQLite by default)
 - Packaged like the rest of the stack: one-command Docker, idempotent bare-metal
   installer, or bundled in theta-env
 
