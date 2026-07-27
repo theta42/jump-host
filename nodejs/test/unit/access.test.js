@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { accessibleHosts, clearCache } = require('../../utils/access');
+const { accessibleHosts, allHosts, clearCache } = require('../../utils/access');
 
 function stubLdap(groups) {
 	return { getGroups: async () => groups };
@@ -52,6 +52,32 @@ test('caches per uid', async () => {
 	await accessibleHosts(user, { fetchImpl, ldap });
 	await accessibleHosts(user, { fetchImpl, ldap });
 	assert.strictEqual(calls, 1);
+});
+
+test('accepts pre-resolved groups (web UI/OIDC session) without calling ldap.getGroups', async () => {
+	clearCache();
+	let ldapCalled = false;
+	const user = { uid: 'erin', groups: ['host_web01_access'] };
+	const fetchImpl = stubFetch({
+		host_web01_access: [{ id: '5', kind: 'host', slug: 'host_web01' }],
+	});
+	const ldap = { getGroups: async () => { ldapCalled = true; return []; } };
+	const hosts = await accessibleHosts(user, { fetchImpl, ldap });
+	assert.deepStrictEqual(hosts.map((h) => h.id), ['5']);
+	assert.strictEqual(ldapCalled, false);
+});
+
+test('allHosts fetches the whole host inventory with no group filter', async () => {
+	const fetchImpl = async (url) => {
+		assert.ok(!url.includes('group='), 'must not filter by group');
+		assert.ok(url.includes('kind=host'));
+		return { ok: true, json: async () => ({ results: [
+			{ id: '1', kind: 'host', slug: 'host_a' },
+			{ id: '2', kind: 'host', slug: 'host_b' },
+		] }) };
+	};
+	const hosts = await allHosts({ fetchImpl });
+	assert.deepStrictEqual(hosts.map((h) => h.id).sort(), ['1', '2']);
 });
 
 test('a bare-array response (envelope drift) is treated as a failed group, not silently []', async () => {

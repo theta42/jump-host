@@ -8,9 +8,10 @@
 const conf = require('@simpleworkjs/conf');
 
 if (conf.standalone && conf.standalone.enabled) {
-	// Standalone mode: use the ORM-backed host inventory.
+	// Standalone mode: use the ORM-backed host inventory. Every host is
+	// accessible to every user, so allHosts and accessibleHosts coincide.
 	const { accessibleHosts } = require('./hosts_file');
-	module.exports = { accessibleHosts, clearCache: () => {} };
+	module.exports = { accessibleHosts, allHosts: () => accessibleHosts(), clearCache: () => {} };
 } else {
 	// Production mode: LDAP groups + SSO API (unchanged).
 
@@ -48,11 +49,21 @@ if (conf.standalone && conf.standalone.enabled) {
 		return directoryClient({ fetchImpl }).getResourcesByGroup(group);
 	}
 
+	// Every host in the inventory, unfiltered — for admins (the web UI's own
+	// account is already gated by requireAdmin before this is ever called).
+	async function allHosts({ fetchImpl = fetch } = {}) {
+		const resources = await directoryClient({ fetchImpl }).getResourcesByGroup(undefined, { kind: 'host' });
+		return resources.filter(r => r.kind === 'host');
+	}
+
 	async function accessibleHosts(user, { fetchImpl = fetch, ldap = userLdap } = {}) {
 		const hit = cache.get(user.uid);
 		if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.hosts;
 
-		const groups = await ldap.getGroups(user.dn);
+		// The SSH path passes an LDAP user ({dn, uid, ...}) with no .groups, so we
+		// look them up; the web UI already has the session's OIDC groups claim
+		// and passes it directly, skipping a redundant LDAP round-trip.
+		const groups = user.groups || await ldap.getGroups(user.dn);
 
 		const seen = new Map();
 		for (const cn of groups) {
@@ -80,5 +91,5 @@ if (conf.standalone && conf.standalone.enabled) {
 		else cache.clear();
 	}
 
-	module.exports = { accessibleHosts, clearCache, fetchResourcesByGroup };
+	module.exports = { accessibleHosts, allHosts, clearCache, fetchResourcesByGroup };
 }

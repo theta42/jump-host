@@ -11,7 +11,8 @@ app.jump = (function(app){
 		var qs = $.param(query || {});
 		app.api.get('audit' + (qs ? '?' + qs : ''), cb);
 	}
-	return {metrics: metrics, sessions: sessions, audit: audit};
+	function hosts(cb){ app.api.get('user/hosts', cb); }
+	return {metrics: metrics, sessions: sessions, audit: audit, hosts: hosts};
 })(app);
 
 // Shared render helpers.
