@@ -1,6 +1,6 @@
 {
   "name": "t42-jump-host",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "SSH jump host for the theta42 stack — LDAP-authenticated, directory-driven host bridging with audit and metrics",
   "author": [
     {
@@ -20,10 +20,10 @@
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.3.0",
-    "@simpleworkjs/conf": "^1.2.0",
     "@simpleworkjs/app-stack": "^1.0.0",
-    "@simpleworkjs/ldap": "^1.0.0",
+    "@simpleworkjs/conf": "^1.2.0",
     "@simpleworkjs/directory-schema": "^1.0.0",
+    "@simpleworkjs/ldap": "^1.0.1",
     "@simpleworkjs/oidc-client": "^1.0.0",
     "@simpleworkjs/orm": "^0.2.8",
     "bcrypt": "^6.0.0",

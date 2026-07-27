@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.5.0] - 2026-07-27
+
+### Added
+- **Web UI dashboard now lists the hosts you can reach** ("Hosts you can reach", or "All hosts" for admins) — previously the dashboard only showed usage metrics, with no way to see your actual access from the browser. Backed by a new `GET /api/user/hosts` endpoint (auth-only, not admin-gated): admins get the full inventory via `utils/access.js`'s new `allHosts()`, everyone else gets the same group-based resolution the SSH front door uses.
+- `utils/access.js`'s `accessibleHosts()` now accepts a pre-resolved `groups` array on the user object, skipping the LDAP `getGroups(dn)` round-trip — the web UI's OIDC session already has its groups claim and has no LDAP `dn` to query with.
+
+### Fixed
+- **Bumped `@simpleworkjs/ldap` to 1.0.1**, which fixes `addSshKey` throwing `ObjectClassViolationError` (LDAP `0x41`) on accounts predating the `ldapPublicKey` auxiliary objectClass. This is the code path this jump host's key-injection (`utils/key_inject.js`) uses on every first connection for a user — on affected accounts it aborted the SSH connection entirely (`key-inject-failed`).
+
 ## [1.4.0] - 2026-07-26
 
 ### Added

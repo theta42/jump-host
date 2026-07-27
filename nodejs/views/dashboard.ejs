@@ -28,6 +28,15 @@
 	</div>
 </div>
 
+<div class="row g-3 mb-4">
+	<div class="col-12">
+		<div class="card shadow-sm">
+			<div class="card-header"><i class="fa-solid fa-network-wired me-1"></i> <span id="my-hosts-title">Hosts you can reach</span></div>
+			<table class="table table-sm mb-0"><tbody id="my-hosts"></tbody></table>
+		</div>
+	</div>
+</div>
+
 <div class="row g-3">
 	<div class="col-md-6">
 		<div class="card shadow-sm"><div class="card-header"><i class="fa-solid fa-server me-1"></i> Top hosts</div>
@@ -49,7 +58,17 @@
 			$b.append('<tr><td>' + app.jump.esc(x.name) + '</td><td class="text-end">' + x.count + '</td></tr>');
 		});
 	}
-	$(document).ready(function(){
+	function hostRows(sel, hosts){
+		var $b = $(sel).empty();
+		if(!hosts || !hosts.length){ $b.append('<tr><td class="text-muted">No hosts reachable.</td></tr>'); return; }
+		hosts.forEach(function(h){
+			var addr = (h.metadata && (h.metadata.ip || h.metadata.address)) || '';
+			$b.append('<tr><td>' + app.jump.esc(h.displayName || h.name || h.slug) + '</td>'
+				+ '<td class="text-muted small">' + app.jump.esc(h.slug) + '</td>'
+				+ '<td class="text-end text-muted small">' + app.jump.esc(addr) + '</td></tr>');
+		});
+	}
+	$(document).ready(async function(){
 		app.jump.metrics(function(error, data){
 			if(error || !data) return;
 			$('#stat-active').text(data.active);
@@ -58,6 +77,12 @@
 			$('#stat-users').text((data.topUsers || []).length);
 			rows('#top-hosts', data.topHosts);
 			rows('#top-users', data.topUsers);
+		});
+		await app.auth.loadUser();
+		if(app.auth.isAdmin()) $('#my-hosts-title').text('All hosts');
+		app.jump.hosts(function(error, data){
+			if(error) return hostRows('#my-hosts', []);
+			hostRows('#my-hosts', data && data.results);
 		});
 	});
 </script>
