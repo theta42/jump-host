@@ -156,6 +156,29 @@ test('shell bridges and echoes', async () => {
 	assert.match(out, /echo:ping/);
 });
 
+test('connectUpstream rejects with a specific, non-generic error when the target refuses the connection', async () => {
+	// Regression coverage for ssh_server.js's resolveAndConnect: it used to
+	// discard this error entirely (catch (_) { throw fail('upstream-unreachable') }),
+	// so the audit log recorded the same generic reason for a refused port, a
+	// timeout, or a bad key alike. Now the real message is threaded through as
+	// failDetail, so this must stay meaningful.
+	// Bind a server just to reserve a free port, then close it immediately so
+	// nothing is listening there — guarantees ECONNREFUSED rather than relying
+	// on a hardcoded port number that might be in use.
+	const closedPort = await new Promise((resolve) => {
+		const probe = require('net').createServer();
+		probe.listen(0, '127.0.0.1', () => { const p = probe.address().port; probe.close(() => resolve(p)); });
+	});
+	await assert.rejects(
+		connectUpstream({ host: '127.0.0.1', port: closedPort, username: 'test', privateKey: jumpKey, uid: 'test', justInjected: false }),
+		(err) => {
+			assert.ok(err.message && err.message.length > 0);
+			assert.notStrictEqual(err.message, 'upstream-unreachable');
+			return true;
+		},
+	);
+});
+
 test('sftp subsystem bytes pass through', async () => {
 	const { conn, ready } = connectJump();
 	await ready;

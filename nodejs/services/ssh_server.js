@@ -130,7 +130,7 @@ async function resolveAndConnect(state, record, { onHostKey } = {}) {
 
 	let justInjected = false;
 	try { justInjected = await ensureKeyInjected(state.user, JUMP_KEYS.publicLine); }
-	catch (_) { throw fail('key-inject-failed'); }
+	catch (err) { throw fail('key-inject-failed', err.message); }
 
 	let upstream;
 	try {
@@ -139,12 +139,16 @@ async function resolveAndConnect(state, record, { onHostKey } = {}) {
 			username: state.uid, privateKey: JUMP_KEYS.clientKey,
 			uid: state.uid, justInjected, onHostKey,
 		});
-	} catch (_) { throw fail('upstream-unreachable'); }
+	} catch (err) { throw fail('upstream-unreachable', err.message); }
 
 	return { upstream, host, endpoint };
 }
 
-function fail(reason) { const e = new Error(reason); e.reason = reason; return e; }
+// detail carries the real underlying error message (e.g. ECONNREFUSED,
+// ETIMEDOUT, an ssh2 auth-failure string) so audit records aren't reduced to
+// just the generic reason code -- without it, a network-layer failure and an
+// SSH auth failure both looked identical in the audit log.
+function fail(reason, detail) { const e = new Error(reason); e.reason = reason; e.detail = detail; return e; }
 
 async function runGrammar(session, client, state) {
 	// Register session listeners IMMEDIATELY — before any async work.
@@ -174,7 +178,7 @@ async function runGrammar(session, client, state) {
 	} catch (err) {
 		const reason = err.reason || 'error';
 		rejectUp(new Error(reasonMessage(reason)));
-		await record.finish({ success: false, failReason: reason });
+		await record.finish({ success: false, failReason: reason, failDetail: err.detail });
 		await metrics.bump({ uid: state.uid, success: false });
 	}
 }
@@ -199,8 +203,8 @@ async function runTuiSession(session, client, state) {
 
 	const record = await audit.create({ uid: state.uid, authMethod: state.authMethod, clientIp: state.clientIp, mode: 'tui' });
 
-	const finishFail = async (reason) => {
-		await record.finish({ success: false, failReason: reason });
+	const finishFail = async (reason, detail) => {
+		await record.finish({ success: false, failReason: reason, failDetail: detail });
 		await metrics.bump({ uid: state.uid, success: false });
 		try { client.end(); } catch (_) {}
 	};
@@ -223,7 +227,7 @@ async function runTuiSession(session, client, state) {
 
 	let justInjected = false;
 	try { justInjected = await ensureKeyInjected(state.user, JUMP_KEYS.publicLine); }
-	catch (_) { return finishFail('key-inject-failed'); }
+	catch (err) { return finishFail('key-inject-failed', err.message); }
 
 	let upstream;
 	try {
@@ -232,9 +236,9 @@ async function runTuiSession(session, client, state) {
 			username: state.uid, privateKey: JUMP_KEYS.clientKey,
 			uid: state.uid, justInjected, onHostKey: (fp) => record.patch({ hostKeyFp: fp }),
 		});
-	} catch (_) {
+	} catch (err) {
 		try { tui.channel.write(`\r\n  Could not reach ${endpoint.address}.\r\n`); tui.channel.close(); } catch (_) {}
-		return finishFail('upstream-unreachable');
+		return finishFail('upstream-unreachable', err.message);
 	}
 
 	registry.add(record.id, { uid: state.uid, target: endpoint.address, slug: tui.host.slug });

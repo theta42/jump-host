@@ -27,5 +27,6 @@ app.apiToken = (function(app){
 // Shared render helpers.
 app.jump.fmtTime = function(ts){ return ts ? moment(Number(ts)).format('YYYY-MM-DD HH:mm:ss') : '—'; };
 app.jump.esc = function(s){ return $('<div>').text(s == null ? '' : String(s)).html(); };
-app.jump.result = function(e){ return e.success ? '<span class="badge bg-success">ok</span>'
-	: '<span class="badge bg-danger">' + app.jump.esc(e.failReason || 'fail') + '</span>'; };
+app.jump.result = function(e){ if (e.success) return '<span class="badge bg-success">ok</span>';
+	var title = e.failDetail ? ' title="' + app.jump.esc(e.failDetail) + '"' : '';
+	return '<span class="badge bg-danger"' + title + '>' + app.jump.esc(e.failReason || 'fail') + '</span>'; };
