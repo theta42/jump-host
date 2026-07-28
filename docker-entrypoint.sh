@@ -12,9 +12,17 @@ if [[ -f /config/jump-secrets.js ]]; then
 	info "Loaded config from /config/jump-secrets.js"
 fi
 
-# Redis for audit/metrics/session storage (app connects to 127.0.0.1:6379).
-info "Starting redis..."
-redis-server --daemonize yes --save '' --appendonly no
+# Redis for audit/metrics/session AND api-token storage (app connects to
+# 127.0.0.1:6379). Persisted (AOF + periodic RDB) to /data, which the
+# deployment should mount as a volume -- without this, every container
+# recreation silently wiped every session, in-flight OAuth login, and any
+# admin-created API token, which is especially bad for the last one since a
+# PAT is meant to be a stable, long-lived credential, not session state.
+REDIS_DATA_DIR="${REDIS_DATA_DIR:-/data}"
+mkdir -p "$REDIS_DATA_DIR"
+info "Starting redis (AOF persisted to $REDIS_DATA_DIR)..."
+redis-server --daemonize yes --dir "$REDIS_DATA_DIR" --appendonly yes \
+	--appendfilename appendonly.aof --save 900 1 --save 300 10 --save 60 10000
 
 # Wait for redis to answer before starting the app.
 for _ in $(seq 1 20); do
