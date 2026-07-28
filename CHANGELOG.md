@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.7.0] - 2026-07-27
+
+### Added
+- **Self-service API tokens (PATs)** — `models/api_token.js` + `routes/api_token.js` (mounted at `/api-token`), Bearer-token support in `middleware/auth.js`, and a create/list/rotate/revoke card on the dashboard. Ports proxy's `jmp_<id>_<secret>` pattern; unlike proxy's, a jump-host token carries no group claims, so it authenticates as its creator for non-admin routes only (never passes `requireAdmin`). jump-host previously had no PAT support at all.
+
 ## [1.6.0] - 2026-07-27
 
 ### Changed
