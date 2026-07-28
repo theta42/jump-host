@@ -31,6 +31,27 @@
 <div class="row g-3 mb-4">
 	<div class="col-12">
 		<div class="card shadow-sm">
+			<div class="card-header"><i class="fa-solid fa-terminal me-1"></i> Quick Jump</div>
+			<div class="card-body">
+				<p class="text-muted small mb-2">
+					Skip the picker: <code>ssh &lt;your-username&gt;_-_&lt;host-slug&gt;@&lt;this-jump-host&gt;</code>
+					connects straight to a host. Or just <code>ssh &lt;your-username&gt;@&lt;this-jump-host&gt;</code>
+					for the interactive picker.
+				</p>
+				<div class="input-group">
+					<input type="text" class="form-control font-monospace" id="quick-jump-cmd" readonly>
+					<button class="btn btn-outline-secondary" onclick="copySshCommand('#quick-jump-cmd')" title="Copy">
+						<i class="fa-solid fa-copy"></i>
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div class="row g-3 mb-4">
+	<div class="col-12">
+		<div class="card shadow-sm">
 			<div class="card-header"><i class="fa-solid fa-network-wired me-1"></i> <span id="my-hosts-title">Hosts you can reach</span></div>
 			<table class="table table-sm mb-0"><tbody id="my-hosts"></tbody></table>
 		</div>
@@ -79,14 +100,38 @@
 			$b.append('<tr><td>' + app.jump.esc(x.name) + '</td><td class="text-end">' + x.count + '</td></tr>');
 		});
 	}
+	// The web UI and the SSH front door share a hostname, just not a port.
+	var SSH_PORT = <%- JSON.stringify(sshPort) %>;
+	function sshCommand(target){
+		var uid = app.auth.user && app.auth.user.username;
+		if(!uid) return '';
+		var portFlag = SSH_PORT === 22 ? '' : ' -p ' + SSH_PORT;
+		return 'ssh ' + uid + (target ? '_-_' + target : '') + '@' + location.hostname + portFlag;
+	}
+	function copySshCommand(sel){
+		var $el = $(sel);
+		var text = $el.val();
+		if(!text) return;
+		navigator.clipboard.writeText(text).then(function(){
+			app.messages.toast('Copied to clipboard', 'success');
+		}, function(){
+			app.messages.toast('Could not copy — select and copy manually', 'danger');
+		});
+	}
+
 	function hostRows(sel, hosts){
 		var $b = $(sel).empty();
 		if(!hosts || !hosts.length){ $b.append('<tr><td class="text-muted">No hosts reachable.</td></tr>'); return; }
 		hosts.forEach(function(h){
 			var addr = (h.metadata && (h.metadata.ip || h.metadata.address)) || '';
+			var rowId = 'host-cmd-' + h.slug.replace(/[^a-zA-Z0-9_-]/g, '');
 			$b.append('<tr><td>' + app.jump.esc(h.displayName || h.name || h.slug) + '</td>'
 				+ '<td class="text-muted small">' + app.jump.esc(h.slug) + '</td>'
-				+ '<td class="text-end text-muted small">' + app.jump.esc(addr) + '</td></tr>');
+				+ '<td class="text-end text-muted small">' + app.jump.esc(addr) + '</td>'
+				+ '<td class="text-end">'
+				+   '<input type="hidden" id="' + rowId + '" value="' + app.jump.esc(sshCommand(h.slug)) + '">'
+				+   '<button class="btn btn-sm btn-outline-secondary" onclick="copySshCommand(\'#' + rowId + '\')" title="Copy quick-jump command"><i class="fa-solid fa-copy"></i></button>'
+				+ '</td></tr>');
 		});
 	}
 	function tokenRows(tokens){
@@ -185,6 +230,7 @@
 		});
 		await app.auth.loadUser();
 		if(app.auth.isAdmin()) $('#my-hosts-title').text('All hosts');
+		$('#quick-jump-cmd').val(sshCommand());
 		app.jump.hosts(function(error, data){
 			if(error) return hostRows('#my-hosts', []);
 			hostRows('#my-hosts', data && data.results);

@@ -14,6 +14,10 @@ const values = {
 	titleIcon: conf.environment !== 'production' ? '<i class="fa-brands fa-dev"></i>' : '',
 	name: conf.name,
 	logo: conf.logo,
+	// The SSH front door's port -- the dashboard's "quick jump" copy buttons
+	// need this to build a real, working `ssh ...` command (the web UI and
+	// SSH front door share a hostname but not a port).
+	sshPort: (conf.ssh && conf.ssh.listenPort) || 22,
 	...buildInfo,
 };
 
