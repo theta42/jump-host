@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.8.0] - 2026-07-28
+
+### Fixed
+- **TUI-mode SSH connections (a bare `ssh user@host`, no target) could drop with "PTY allocation request failed" / "shell request failed"** — `runTuiSession` awaited two real round-trips (an audit-log write, then a directory API call) *before* attaching the session's pty/shell/exec listeners, so a client that sent those requests quickly enough got auto-rejected by ssh2 before anything was listening. `runGrammar` (the `uid_-_target` path) already had the equivalent fix; this ports it to the picker path.
+- **`formAJAX`'s loading indicator showed literal HTML**, not a spinner — same fix as sso-manager-node/proxy's companion releases.
+
 ## [1.7.1] - 2026-07-28
 
 ### Added
