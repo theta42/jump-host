@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.8.1] - 2026-07-28
+
+### Fixed
+- **Redis had zero persistence** (`--save '' --appendonly no`, no data-dir volume) — every container rebuild/recreation silently wiped all sessions, in-flight OAuth logins, and any admin-created API token. This is why re-running `setup.sh` appeared to "break OAuth with jump": the jump-host container gets recreated, and any token or in-flight login vanished with it. Now Redis persists (AOF + periodic RDB) to `/data`, mounted as a named volume (`jump-redis-data`) in theta-env's compose file. Verified live: minted a PAT, force-recreated the container, confirmed the same PAT still authenticated afterward.
+
 ## [1.8.0] - 2026-07-28
 
 ### Fixed
