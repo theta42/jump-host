@@ -180,6 +180,23 @@ async function runGrammar(session, client, state) {
 }
 
 async function runTuiSession(session, client, state) {
+	// Register session listeners IMMEDIATELY, before any await — same fix,
+	// same reason, as runGrammar above. The client sends pty-req and shell
+	// requests right after opening the session; awaiting audit.create() and
+	// accessibleHosts() first (both real round-trips: Redis, then the
+	// directory API) left a window where those requests could arrive before
+	// runTui had attached any listener for them, and ssh2 auto-rejects an
+	// unlistened channel request with CHANNEL_FAILURE — surfacing to the
+	// client as "PTY allocation request failed" / "shell request failed",
+	// with the connection then just sitting there (nothing left to drive it).
+	let resolveHosts, rejectHosts;
+	const hostsPromise = new Promise((res, rej) => { resolveHosts = res; rejectHosts = rej; });
+	// A silent catch so a rejection isn't "unhandled" if the client never
+	// sends a shell request at all (exec-only) — runTui's own .catch() below
+	// still runs independently when it does.
+	hostsPromise.catch(() => {});
+	const tuiPromise = runTui(session, state.uid, hostsPromise);
+
 	const record = await audit.create({ uid: state.uid, authMethod: state.authMethod, clientIp: state.clientIp, mode: 'tui' });
 
 	const finishFail = async (reason) => {
@@ -189,10 +206,15 @@ async function runTuiSession(session, client, state) {
 	};
 
 	let hosts;
-	try { hosts = await accessibleHosts(state.user); }
-	catch (_) { return finishFail('directory-unreachable'); }
+	try {
+		hosts = await accessibleHosts(state.user);
+		resolveHosts(hosts);
+	} catch (_) {
+		rejectHosts(new Error('directory-unreachable'));
+		return finishFail('directory-unreachable');
+	}
 
-	const tui = await runTui(session, state.uid, hosts);
+	const tui = await tuiPromise;
 	if (!tui.host) return finishFail('cancelled');
 	state.target = tui.host.slug;
 
@@ -253,7 +275,10 @@ function reasonMessage(reason) {
 
 // Run the TUI picker over a shell channel; returns { host, channel, ptyInfo }.
 // host is null if the user quit. exec/subsystem in picker mode are rejected.
-function runTui(session, uid, hosts) {
+// Takes a Promise for the accessible-hosts list (not the resolved list)
+// so the caller can register these listeners before that lookup completes
+// — see the comment in runTuiSession for why that ordering matters.
+function runTui(session, uid, hostsPromise) {
 	return new Promise((resolve) => {
 		let ptyInfo = null;
 		let settled = false;
@@ -262,9 +287,14 @@ function runTui(session, uid, hosts) {
 		session.on('pty', (accept, _reject, info) => { ptyInfo = info; accept && accept(); });
 		session.on('shell', (accept) => {
 			const channel = accept();
-			pickHost(channel, uid, hosts).then((host) => {
-				if (!host) { try { channel.write('\r\n  Bye.\r\n'); channel.close(); } catch (_) {} }
-				finish({ host, channel, ptyInfo });
+			hostsPromise.then((hosts) => {
+				pickHost(channel, uid, hosts).then((host) => {
+					if (!host) { try { channel.write('\r\n  Bye.\r\n'); channel.close(); } catch (_) {} }
+					finish({ host, channel, ptyInfo });
+				});
+			}).catch(() => {
+				try { channel.write('\r\n  Could not reach the directory.\r\n'); channel.close(); } catch (_) {}
+				finish({ host: null });
 			});
 		});
 		session.on('exec', (accept) => {
