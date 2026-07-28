@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.8.2] - 2026-07-28
+
+### Fixed
+- **Audit records for a failed upstream connection only ever said `upstream-unreachable`** — `resolveAndConnect` discarded the real error from `connectUpstream` (ECONNREFUSED, ETIMEDOUT, an ssh2 auth-failure message, etc.) and replaced it with that one generic string, so there was no way to tell a network-layer failure from an auth failure from the audit log alone. This is what blocked root-causing the "Could not reach 192.168.1.206" (emby host) report — the real error is now captured and surfaced as a new `failDetail` field on the audit record, shown as a tooltip on the fail badge in the admin audit table.
+
 ## [1.8.1] - 2026-07-28
 
 ### Fixed
