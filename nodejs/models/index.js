@@ -32,14 +32,17 @@ async function getRedis() {
 
 module.exports.getRedis = getRedis;
 
-// Register models (order matters: User before AuthToken's relation resolves).
+// Register models (order matters: User before AuthToken's relation resolves,
+// and before ApiToken so `require('.')`'s Table is already exporting User).
 require('./user_redis');      // User (redis-backed local + OIDC JIT)
+const { ApiToken } = require('./api_token');
+module.exports.ApiToken = ApiToken;
 
 // Shared OIDC client (authorization-code + PKCE): session models (Token,
 // AuthToken, OidcState), the Auth service, and the /login /logout /oidc/start
-// /oidc/callback router — all created on this app's Table/redis. jump-host has
-// no Bearer PATs, so checkApiToken is omitted (Auth.checkApiToken is absent).
-const oidcClient = createOidcClient({ Table });
+// /oidc/callback router — all created on this app's Table/redis. checkApiToken
+// wraps ApiToken.authenticate, same wiring as proxy's models/index.js.
+const oidcClient = createOidcClient({ Table, checkApiToken: (raw) => ApiToken.authenticate(raw) });
 module.exports.Token = oidcClient.Token;
 module.exports.AuthToken = oidcClient.AuthToken;
 module.exports.OidcState = oidcClient.OidcState;
