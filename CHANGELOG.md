@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.9.0] - 2026-07-28
+
+### Added
+- **"Quick Jump" copy-to-clipboard section on the dashboard** — the `uid_-_target` grammar-mode SSH command was documented in the README but nowhere in the UI. A new card gives a one-click-copy command for interactive-picker mode, and every row in "Hosts you can reach" has its own copy button for the exact grammar-mode command to that host, ready to paste and run as-is (uses the logged-in user's own uid).
+
 ## [1.8.2] - 2026-07-28
 
 ### Fixed
