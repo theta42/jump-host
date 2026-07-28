@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.7.1] - 2026-07-28
+
+### Added
+- **Regression test**: a static check across all views/client-side scripts fails CI if any native `alert()`/`confirm()`/`prompt()` call appears — these block all further browser events on the page. This app has never had one; keeps it that way.
+
 ## [1.7.0] - 2026-07-27
 
 ### Added
