@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.10.0] - 2026-07-28
+
+### Added
+- **API-token UI unified with sso-manager-node/proxy**: card grid replacing the bare table, a new Edit modal (footer shows real created-by/on data), and a Description field on both the create and edit flows — the model and API already fully supported all of this, it just wasn't exposed anywhere in the dashboard.
+
+### Changed
+- `@simpleworkjs/frontend` bumped to `^0.2.6` (this app was still on `^0.2.5`).
+
 ## [1.9.0] - 2026-07-28
 
 ### Added
