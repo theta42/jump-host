@@ -231,7 +231,12 @@
 			expires_in_days: $('#new-token-days').val(),
 		}, function(error, data){
 			if(error) return app.messages.action((data && data.message) || 'Failed to create token', app.modal.body(), 'danger');
-			app.modal.close();
+			// Deliberately no app.modal.close() here -- app.modal is a
+			// singleton, and close() immediately followed by open() (inside
+			// showToken) in the same tick collides with Bootstrap's
+			// hide-transition guard, so the reveal modal silently never
+			// shows. open() alone already overwrites the (already-visible)
+			// modal's content in place.
 			showToken('API Token Created', data.token);
 			loadApiTokens();
 		});
