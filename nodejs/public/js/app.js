@@ -19,9 +19,10 @@ app.jump = (function(app){
 app.apiToken = (function(app){
 	function list(cb){ app.api.get('api-token/', cb); }
 	function add(args, cb){ app.api.post('api-token/', args, cb); }
+	function update(args, cb){ app.api.put('api-token/' + args.id, args, cb); }
 	function remove(id, cb){ app.api.delete('api-token/' + id, cb); }
 	function rotate(id, cb){ app.api.post('api-token/' + id + '/rotate', {}, cb); }
-	return {list: list, add: add, remove: remove, rotate: rotate};
+	return {list: list, add: add, update: update, remove: remove, rotate: rotate};
 })(app);
 
 // Shared render helpers.
