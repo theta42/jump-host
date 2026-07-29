@@ -40,7 +40,7 @@
 				</p>
 				<div class="input-group">
 					<input type="text" class="form-control font-monospace" id="quick-jump-cmd" readonly>
-					<button class="btn btn-outline-secondary" onclick="copySshCommand('#quick-jump-cmd')" title="Copy">
+					<button class="btn btn-outline-secondary" onclick="copyFieldValue('#quick-jump-cmd')" title="Copy">
 						<i class="fa-solid fa-copy"></i>
 					</button>
 				</div>
@@ -84,10 +84,36 @@
 				(e.g. <code>GET /api/user/hosts</code>) — not for SSH login. A token carries
 				no group claims, so it can't reach admin-only endpoints.
 			</p>
-			<table class="table table-sm mb-0">
-				<thead><tr><th>Name</th><th>Created</th><th>Last used</th><th>Expires</th><th></th></tr></thead>
-				<tbody id="api-tokens"></tbody>
-			</table>
+			<div class="card-body">
+				<p id="api-tokens-empty" class="text-muted mb-0" style="display:none">No API tokens.</p>
+				<div id="api-tokens">
+					<div jq-repeat="apiTokenCard" jq-index-key="id" id="apitoken-card-{{id}}" class="card shadow-sm mb-3">
+						<div class="card-header">
+							<h6 class="mb-0"><i class="fa-solid fa-key"></i> {{name}}</h6>
+							<small class="text-muted font-monospace">{{id_short}}</small>
+						</div>
+						<div class="card-header actionMessage" style="display:none"></div>
+						<div class="card-body">
+							{{#description}}<p>{{description}}</p>{{/description}}
+							<dl class="row mb-0 small">
+								<dt class="col-sm-3">Token ID</dt>
+								<dd class="col-sm-9"><code>{{id_short}}</code></dd>
+								<dt class="col-sm-3">Created</dt>
+								<dd class="col-sm-9">{{{created_display}}}</dd>
+								<dt class="col-sm-3">Last used</dt>
+								<dd class="col-sm-9">{{{last_used_display}}}</dd>
+								<dt class="col-sm-3">Expires</dt>
+								<dd class="col-sm-9">{{{expires_display}}}</dd>
+							</dl>
+						</div>
+						<div class="card-footer">
+							<button type="button" onclick="editToken('{{id}}')" class="btn btn-primary btn-sm"><i class="fa-solid fa-pen-to-square"></i> Edit</button>
+							<button type="button" onclick="rotateApiToken('{{id}}', this)" class="btn btn-warning btn-sm"><i class="fa-solid fa-arrows-rotate"></i> Rotate</button>
+							<button type="button" onclick="revokeApiToken('{{id}}', this)" class="btn btn-danger btn-sm float-end"><i class="fa-solid fa-trash"></i> Revoke</button>
+						</div>
+					</div>
+				</div>
+			</div>
 		</div>
 	</div>
 </div>
@@ -108,7 +134,7 @@
 		var portFlag = SSH_PORT === 22 ? '' : ' -p ' + SSH_PORT;
 		return 'ssh ' + uid + (target ? '_-_' + target : '') + '@' + location.hostname + portFlag;
 	}
-	function copySshCommand(sel){
+	function copyFieldValue(sel){
 		var $el = $(sel);
 		var text = $el.val();
 		if(!text) return;
@@ -130,42 +156,49 @@
 				+ '<td class="text-end text-muted small">' + app.jump.esc(addr) + '</td>'
 				+ '<td class="text-end">'
 				+   '<input type="hidden" id="' + rowId + '" value="' + app.jump.esc(sshCommand(h.slug)) + '">'
-				+   '<button class="btn btn-sm btn-outline-secondary" onclick="copySshCommand(\'#' + rowId + '\')" title="Copy quick-jump command"><i class="fa-solid fa-copy"></i></button>'
+				+   '<button class="btn btn-sm btn-outline-secondary" onclick="copyFieldValue(\'#' + rowId + '\')" title="Copy quick-jump command"><i class="fa-solid fa-copy"></i></button>'
 				+ '</td></tr>');
 		});
 	}
-	function tokenRows(tokens){
-		var $b = $('#api-tokens').empty();
-		if(!tokens || !tokens.length){ $b.append('<tr><td colspan="5" class="text-muted">No API tokens.</td></tr>'); return; }
-		tokens.forEach(function(t){
-			var expires = t.expires_at ? app.jump.fmtTime(t.expires_at) : 'Never';
-			var lastUsed = t.last_used_on ? app.jump.fmtTime(t.last_used_on) : 'Never';
-			$b.append(
-				'<tr>'
-				+ '<td>' + app.jump.esc(t.name) + '</td>'
-				+ '<td class="text-muted small">' + app.jump.fmtTime(t.created_on) + '</td>'
-				+ '<td class="text-muted small">' + lastUsed + '</td>'
-				+ '<td class="text-muted small">' + expires + '</td>'
-				+ '<td class="text-end">'
-				+   '<button class="btn btn-sm btn-outline-secondary" onclick="rotateApiToken(\'' + t.id + '\', this)" title="Rotate"><i class="fa-solid fa-rotate"></i></button> '
-				+   '<button class="btn btn-sm btn-outline-danger" onclick="revokeApiToken(\'' + t.id + '\', this)" title="Revoke"><i class="fa-solid fa-trash"></i></button>'
-				+ '</td>'
-				+ '</tr>'
-			);
-		});
+	// expires_at/created_on/last_used_on come back as redis-hash strings for
+	// some fields and real numbers for others depending on the model's field
+	// type -- fmtTime already handles both via moment(ms, 'x').
+	function fmtExpiry(token){
+		var exp = Number(token.expires_at);
+		if(!exp) return '<span class="badge text-bg-secondary">never</span>';
+		if(Date.now() > exp) return '<span class="badge text-bg-danger">expired</span>';
+		return '<span class="badge text-bg-warning">' + moment(exp).fromNow() + '</span>';
+	}
+
+	var tokensById = {};
+	function processToken(token){
+		tokensById[token.id] = token;
+		token.id_short = token.id.slice(0, 12) + '…';
+		token.expires_display = fmtExpiry(token);
+		token.created_display = app.jump.fmtTime(token.created_on);
+		token.last_used_display = token.last_used_on ? app.jump.fmtTime(token.last_used_on) : 'Never';
+		return token;
 	}
 
 	function loadApiTokens(){
 		app.apiToken.list(function(error, data){
-			if(error) return tokenRows([]);
-			tokenRows(data && data.results);
+			var tokens = (!error && data && data.results) || [];
+			$.scope.apiTokenCard.empty();
+			tokens.forEach(function(t){ $.scope.apiTokenCard.push(processToken(t)); });
+			$('#api-tokens-empty').toggle(tokens.length === 0);
 		});
 	}
 
+	// Shared "reveal secret once" display -- also used by proxy/sso-manager-node.
 	function showToken(title, token){
 		app.modal.open({title: title, bodyHtml:
 			'<p class="text-danger"><i class="fa-solid fa-triangle-exclamation"></i> Save this token now — it will <strong>not</strong> be shown again.</p>'
-			+ '<div class="input-group"><input type="text" class="form-control font-monospace" readonly value="' + app.jump.esc(token) + '"></div>'
+			+ '<div class="input-group"><input type="text" class="form-control font-monospace" id="revealed-token" readonly value="' + app.jump.esc(token) + '">'
+			// Reuses the same copy-to-clipboard helper as the Quick Jump card
+			// above (toast feedback -- FontAwesome replaces <i> icons with
+			// inline <svg>, so a checkmark-flash-the-icon approach silently
+			// no-ops; the toast doesn't have that problem).
+			+   '<button class="btn btn-outline-secondary" onclick="copyFieldValue(\'#revealed-token\')" title="Copy"><i class="fa-solid fa-copy"></i></button></div>'
 			+ '<p class="mt-3 mb-0 text-muted small">Use it as a bearer token:<br><code>Authorization: Bearer ' + app.jump.esc(token) + '</code></p>'
 		});
 	}
@@ -177,27 +210,72 @@
 			+   '<input type="text" class="form-control" id="new-token-name" placeholder="e.g. laptop-cron">'
 			+ '</div>'
 			+ '<div class="mb-3">'
+			+   '<label class="form-label">Description</label>'
+			+   '<input type="text" class="form-control" id="new-token-description" placeholder="optional">'
+			+ '</div>'
+			+ '<div class="mb-3">'
 			+   '<label class="form-label">Expires in (days, blank = never)</label>'
 			+   '<input type="number" class="form-control" id="new-token-days" min="1">'
-			+ '</div>'
-			+ '<button class="btn btn-primary" onclick="submitApiToken()"><i class="fa-solid fa-check"></i> Create</button>'
+			+ '</div>',
+			footer: {buttonsHtml: app.modal.footerButtons({onSave: 'submitApiToken()', saveLabel: 'Create'})},
 		});
 		$body.find('#new-token-name').focus();
 	}
 
 	function submitApiToken(){
 		var name = $('#new-token-name').val().trim();
-		var $card = $('#api-tokens').closest('.card');
-		if(!name) return app.messages.action('Name is required', $card, 'danger');
+		if(!name) return app.messages.action('Name is required', app.modal.body(), 'danger');
 		app.apiToken.add({
 			name: name,
+			description: $('#new-token-description').val(),
 			expires_in_days: $('#new-token-days').val(),
 		}, function(error, data){
-			if(error) return app.messages.action((data && data.message) || 'Failed to create token', $card, 'danger');
+			if(error) return app.messages.action((data && data.message) || 'Failed to create token', app.modal.body(), 'danger');
+			app.modal.close();
 			showToken('API Token Created', data.token);
 			loadApiTokens();
 		});
 	}
+
+	function editToken(id){
+		var t = tokensById[id]; if(!t) return;
+		app.modal.open({
+			title: 'Edit Token',
+			bodyHtml:
+				'<input type="hidden" id="edit-token-id" value="' + app.jump.esc(id) + '">'
+				+ '<div class="mb-3">'
+				+   '<label class="form-label">Name</label>'
+				+   '<input type="text" class="form-control" id="edit-token-name" value="' + app.jump.esc(t.name || '') + '">'
+				+ '</div>'
+				+ '<div class="mb-3">'
+				+   '<label class="form-label">Description</label>'
+				+   '<input type="text" class="form-control" id="edit-token-description" value="' + app.jump.esc(t.description || '') + '">'
+				+ '</div>'
+				+ '<div class="mb-3">'
+				+   '<label class="form-label">Expires in (days, blank = keep as-is, 0 = never)</label>'
+				+   '<input type="number" class="form-control" id="edit-token-days" min="0">'
+				+ '</div>',
+			footer: {
+				metaHtml: 'Created by ' + app.jump.esc(t.created_by || '—') + ' on ' + app.jump.fmtTime(t.created_on),
+				buttonsHtml: app.modal.footerButtons({onSave: 'saveEditToken()', saveLabel: 'Save'}),
+			},
+		});
+	}
+
+	function saveEditToken(){
+		var payload = {
+			id: $('#edit-token-id').val(),
+			name: $('#edit-token-name').val(),
+			description: $('#edit-token-description').val(),
+			expires_in_days: $('#edit-token-days').val(),
+		};
+		app.apiToken.update(payload, function(error, data){
+			if(error) return app.messages.action((data && data.message) || 'Failed to update token', app.modal.body(), 'danger');
+			app.modal.close();
+			loadApiTokens();
+		});
+	}
+
 	async function revokeApiToken(id, btn){
 		var $card = $(btn).closest('.card');
 		var ok = await app.messages.confirm('Revoke this API token? It stops working immediately.', $card, 'danger');
