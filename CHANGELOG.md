@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.10.1] - 2026-07-28
+
+### Fixed
+- **The API-token reveal modal silently didn't show after creating a token** — `submitApiToken()` called `app.modal.close()` immediately before `showToken()`'s `app.modal.open()` in the same tick, colliding with Bootstrap's hide-transition guard on the singleton modal. Same root cause as the OAuth-secret-reveal race fixed in sso-manager-node (v1.8.2) and the create-token race fixed in proxy (v1.7.0).
+
 ## [1.10.0] - 2026-07-28
 
 ### Added
