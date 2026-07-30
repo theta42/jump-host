@@ -130,7 +130,7 @@ async function resolveAndConnect(state, record, { onHostKey } = {}) {
 
 	let justInjected = false;
 	try { justInjected = await ensureKeyInjected(state.user, JUMP_KEYS.publicLine); }
-	catch (err) { throw fail('key-inject-failed', err.message); }
+	catch (err) { throw fail('key-inject-failed', err.message, host ? host.slug : undefined); }
 
 	let upstream;
 	try {
@@ -139,7 +139,7 @@ async function resolveAndConnect(state, record, { onHostKey } = {}) {
 			username: state.uid, privateKey: JUMP_KEYS.clientKey,
 			uid: state.uid, justInjected, onHostKey,
 		});
-	} catch (err) { throw fail('upstream-unreachable', err.message); }
+	} catch (err) { throw fail('upstream-unreachable', err.message, host ? host.slug : undefined); }
 
 	return { upstream, host, endpoint };
 }
@@ -147,8 +147,10 @@ async function resolveAndConnect(state, record, { onHostKey } = {}) {
 // detail carries the real underlying error message (e.g. ECONNREFUSED,
 // ETIMEDOUT, an ssh2 auth-failure string) so audit records aren't reduced to
 // just the generic reason code -- without it, a network-layer failure and an
-// SSH auth failure both looked identical in the audit log.
-function fail(reason, detail) { const e = new Error(reason); e.reason = reason; e.detail = detail; return e; }
+// SSH auth failure both looked identical in the audit log. hostSlug (when the
+// target was already resolved to a known host) lets callers attribute the
+// failure to that host for per-host "last failed connection" tracking.
+function fail(reason, detail, hostSlug) { const e = new Error(reason); e.reason = reason; e.detail = detail; e.hostSlug = hostSlug; return e; }
 
 async function runGrammar(session, client, state) {
 	// Register session listeners IMMEDIATELY — before any async work.
@@ -179,7 +181,7 @@ async function runGrammar(session, client, state) {
 		const reason = err.reason || 'error';
 		rejectUp(new Error(reasonMessage(reason)));
 		await record.finish({ success: false, failReason: reason, failDetail: err.detail });
-		await metrics.bump({ uid: state.uid, success: false });
+		await metrics.bump({ uid: state.uid, hostSlug: err.hostSlug, success: false });
 	}
 }
 
@@ -203,9 +205,9 @@ async function runTuiSession(session, client, state) {
 
 	const record = await audit.create({ uid: state.uid, authMethod: state.authMethod, clientIp: state.clientIp, mode: 'tui' });
 
-	const finishFail = async (reason, detail) => {
+	const finishFail = async (reason, detail, hostSlug) => {
 		await record.finish({ success: false, failReason: reason, failDetail: detail });
-		await metrics.bump({ uid: state.uid, success: false });
+		await metrics.bump({ uid: state.uid, hostSlug, success: false });
 		try { client.end(); } catch (_) {}
 	};
 
@@ -227,7 +229,7 @@ async function runTuiSession(session, client, state) {
 
 	let justInjected = false;
 	try { justInjected = await ensureKeyInjected(state.user, JUMP_KEYS.publicLine); }
-	catch (err) { return finishFail('key-inject-failed', err.message); }
+	catch (err) { return finishFail('key-inject-failed', err.message, tui.host.slug); }
 
 	let upstream;
 	try {
@@ -238,7 +240,7 @@ async function runTuiSession(session, client, state) {
 		});
 	} catch (err) {
 		try { tui.channel.write(`\r\n  Could not reach ${endpoint.address}.\r\n`); tui.channel.close(); } catch (_) {}
-		return finishFail('upstream-unreachable', err.message);
+		return finishFail('upstream-unreachable', err.message, tui.host.slug);
 	}
 
 	registry.add(record.id, { uid: state.uid, target: endpoint.address, slug: tui.host.slug });

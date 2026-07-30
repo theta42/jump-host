@@ -3,33 +3,6 @@
 
 <div class="container mt-4">
 <div class="row g-3 mb-4">
-	<div class="col-6 col-md-3">
-		<div class="card shadow-sm text-center"><div class="card-body">
-			<div class="display-6" id="stat-active">–</div>
-			<div class="text-muted small text-uppercase">Active sessions</div>
-		</div></div>
-	</div>
-	<div class="col-6 col-md-3">
-		<div class="card shadow-sm text-center"><div class="card-body">
-			<div class="display-6" id="stat-total">–</div>
-			<div class="text-muted small text-uppercase">Total connections</div>
-		</div></div>
-	</div>
-	<div class="col-6 col-md-3">
-		<div class="card shadow-sm text-center"><div class="card-body">
-			<div class="display-6 text-danger" id="stat-fail">–</div>
-			<div class="text-muted small text-uppercase">Failed</div>
-		</div></div>
-	</div>
-	<div class="col-6 col-md-3">
-		<div class="card shadow-sm text-center"><div class="card-body">
-			<div class="display-6" id="stat-users">–</div>
-			<div class="text-muted small text-uppercase">Users seen</div>
-		</div></div>
-	</div>
-</div>
-
-<div class="row g-3 mb-4">
 	<div class="col-12">
 		<div class="card shadow-sm">
 			<div class="card-header"><i class="fa-solid fa-terminal me-1"></i> Quick Jump</div>
@@ -54,20 +27,12 @@
 	<div class="col-12">
 		<div class="card shadow-sm">
 			<div class="card-header"><i class="fa-solid fa-network-wired me-1"></i> <span id="my-hosts-title">Hosts you can reach</span></div>
-			<table class="table table-sm mb-0"><tbody id="my-hosts"></tbody></table>
-		</div>
-	</div>
-</div>
-
-<div class="row g-3 mb-4">
-	<div class="col-md-6">
-		<div class="card shadow-sm"><div class="card-header"><i class="fa-solid fa-server me-1"></i> Top hosts</div>
-			<table class="table table-sm mb-0"><tbody id="top-hosts"></tbody></table>
-		</div>
-	</div>
-	<div class="col-md-6">
-		<div class="card shadow-sm"><div class="card-header"><i class="fa-solid fa-user me-1"></i> Top users</div>
-			<table class="table table-sm mb-0"><tbody id="top-users"></tbody></table>
+			<div class="table-responsive">
+				<table class="table table-sm mb-0">
+					<thead><tr><th>Host</th><th>Slug</th><th class="text-end">Address</th><th>Last connection</th><th>Last failed connection</th><th></th></tr></thead>
+					<tbody id="my-hosts"></tbody>
+				</table>
+			</div>
 		</div>
 	</div>
 </div>
@@ -121,13 +86,6 @@
 </div>
 
 <script type="text/javascript">
-	function rows(sel, list){
-		var $b = $(sel).empty();
-		if(!list || !list.length){ $b.append('<tr><td class="text-muted">No data.</td></tr>'); return; }
-		list.forEach(function(x){
-			$b.append('<tr><td>' + app.jump.esc(x.name) + '</td><td class="text-end">' + x.count + '</td></tr>');
-		});
-	}
 	// The web UI and the SSH front door share a hostname, just not a port.
 	var SSH_PORT = <%- JSON.stringify(sshPort) %>;
 	function sshCommand(target){
@@ -153,9 +111,16 @@
 		hosts.forEach(function(h){
 			var addr = (h.metadata && (h.metadata.ip || h.metadata.address)) || '';
 			var rowId = 'host-cmd-' + h.slug.replace(/[^a-zA-Z0-9_-]/g, '');
-			$b.append('<tr><td>' + app.jump.esc(h.displayName || h.name || h.slug) + '</td>'
+			// Green: a session to this host is live right now. Yellow: the most
+			// recent attempt to this host failed (and none is currently live).
+			var rowClass = h.connected ? 'table-success'
+				: (h.lastFailed && (!h.lastConnected || h.lastFailed > h.lastConnected)) ? 'table-warning'
+				: '';
+			$b.append('<tr class="' + rowClass + '"><td>' + app.jump.esc(h.displayName || h.name || h.slug) + '</td>'
 				+ '<td class="text-muted small">' + app.jump.esc(h.slug) + '</td>'
 				+ '<td class="text-end text-muted small">' + app.jump.esc(addr) + '</td>'
+				+ '<td class="small">' + (h.lastConnected ? app.jump.fmtTime(h.lastConnected) : '—') + '</td>'
+				+ '<td class="small">' + (h.lastFailed ? app.jump.fmtTime(h.lastFailed) : '—') + '</td>'
 				+ '<td class="text-end">'
 				+   '<input type="hidden" id="' + rowId + '" value="' + app.jump.esc(sshCommand(h.slug)) + '">'
 				+   '<button class="btn btn-sm btn-outline-secondary" onclick="copyFieldValue(\'#' + rowId + '\')" title="Copy quick-jump command"><i class="fa-solid fa-copy"></i></button>'
@@ -304,17 +269,8 @@
 	}
 
 	$(document).ready(async function(){
-		app.jump.metrics(function(error, data){
-			if(error || !data) return;
-			$('#stat-active').text(data.active);
-			$('#stat-total').text(data.total);
-			$('#stat-fail').text(data.fail);
-			$('#stat-users').text((data.topUsers || []).length);
-			rows('#top-hosts', data.topHosts);
-			rows('#top-users', data.topUsers);
-		});
 		await app.auth.loadUser();
-		if(app.auth.isAdmin()) $('#my-hosts-title').text('All hosts');
+		if(app.auth.isAdmin()) $('#my-hosts-title').text('My hosts');
 		$('#quick-jump-cmd').val(sshCommand());
 		app.jump.hosts(function(error, data){
 			if(error) return hostRows('#my-hosts', []);

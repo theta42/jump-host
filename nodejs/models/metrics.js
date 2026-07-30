@@ -13,8 +13,32 @@ async function bump({ uid, hostSlug, success }) {
 	const ops = [redis.incr(`${P()}total`), redis.incr(`${P()}day_${day}`)];
 	if (!success) ops.push(redis.incr(`${P()}fail`));
 	if (uid) ops.push(redis.incr(`${P()}user_${uid}`));
-	if (hostSlug) ops.push(redis.incr(`${P()}host_${hostSlug}`));
+	if (hostSlug) {
+		ops.push(redis.incr(`${P()}host_${hostSlug}`));
+		// Last-attempt timestamp per host, split by outcome -- drives the
+		// dashboard's "Last connection"/"Last failed connection" columns and
+		// row highlighting (see lastForHosts below).
+		ops.push(redis.set(`${P()}host_last_${success ? 'success' : 'fail'}_${hostSlug}`, Date.now()));
+	}
 	await Promise.all(ops);
+}
+
+// Per-host last-success/last-fail timestamps for a given list of slugs (e.g.
+// the hosts a session can reach), for the dashboard's host list.
+async function lastForHosts(slugs) {
+	const redis = await getRedis();
+	const result = {};
+	await Promise.all((slugs || []).map(async (slug) => {
+		const [lastSuccess, lastFail] = await Promise.all([
+			redis.get(`${P()}host_last_success_${slug}`),
+			redis.get(`${P()}host_last_fail_${slug}`),
+		]);
+		result[slug] = {
+			lastConnected: lastSuccess ? Number(lastSuccess) : null,
+			lastFailed: lastFail ? Number(lastFail) : null,
+		};
+	}));
+	return result;
 }
 
 async function summary() {
@@ -37,4 +61,4 @@ async function summary() {
 	};
 }
 
-module.exports = { bump, summary };
+module.exports = { bump, summary, lastForHosts };

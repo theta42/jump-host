@@ -80,7 +80,12 @@ module.exports = {
 
 	auth: {
 		// OIDC group memberships that grant web UI/API admin access.
-		adminGroups: ['app_sso_admin'],
+		// app_super_admin is the cross-app super admin group (sso, proxy, jump-host).
+		adminGroups: ['app_sso_admin', 'app_super_admin'],
+		// OIDC group memberships that grant jump admin access (the audit page
+		// and its data), without granting other admin-only rights. Full admins
+		// (adminGroups/adminUsers) always have jump admin access too.
+		jumpAdminGroups: ['app_jump_admin'],
 		// Local anti-lockout admin: the first name here is bootstrapped as a
 		// redis-backed user on first boot (password from localAdminPass, or a
 		// random one printed to the log once). Lets you in even with OIDC down.

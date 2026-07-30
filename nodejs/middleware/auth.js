@@ -56,6 +56,25 @@ async function requireAdmin(req, res, next){
 	next(error);
 }
 
+// Jump admin = access to the audit page/data. A narrower grant than full
+// jump-host admin: full admins (isAdmin) always qualify, plus anyone in
+// conf.auth.jumpAdminGroups (e.g. a dedicated app_jump_admin LDAP group) can
+// be granted audit access without also getting other admin-only rights.
+function isJumpAdmin(req){
+	if(isAdmin(req)) return true;
+	const jumpAdminGroups = (conf.auth && conf.auth.jumpAdminGroups) || [];
+	return (req.groups || []).some(g => jumpAdminGroups.includes(g));
+}
+
+async function requireJumpAdmin(req, res, next){
+	if(isJumpAdmin(req)) return next();
+	const error = new Error('Forbidden');
+	error.name = 'Forbidden';
+	error.status = 403;
+	error.message = 'Jump admin access required.';
+	next(error);
+}
+
 // Socket.IO handshake auth (app-base.js connects with the session token).
 async function authIO(socket, next){
 	try{
@@ -69,4 +88,4 @@ async function authIO(socket, next){
 	}
 }
 
-module.exports = { auth, requireAdmin, authIO, isAdmin };
+module.exports = { auth, requireAdmin, authIO, isAdmin, isJumpAdmin, requireJumpAdmin };

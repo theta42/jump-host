@@ -1,7 +1,47 @@
 <%- include('top') %>
-<script type="text/javascript">app.auth.forceLogin();</script>
+<script type="text/javascript">app.auth.forceLogin(['admin', 'app_jump_admin']);</script>
 
 <div class="container mt-4">
+<div class="row g-3 mb-4">
+	<div class="col-6 col-md-3">
+		<div class="card shadow-sm text-center"><div class="card-body">
+			<div class="display-6" id="stat-active">–</div>
+			<div class="text-muted small text-uppercase">Active sessions</div>
+		</div></div>
+	</div>
+	<div class="col-6 col-md-3">
+		<div class="card shadow-sm text-center"><div class="card-body">
+			<div class="display-6" id="stat-total">–</div>
+			<div class="text-muted small text-uppercase">Total connections</div>
+		</div></div>
+	</div>
+	<div class="col-6 col-md-3">
+		<div class="card shadow-sm text-center"><div class="card-body">
+			<div class="display-6 text-danger" id="stat-fail">–</div>
+			<div class="text-muted small text-uppercase">Failed</div>
+		</div></div>
+	</div>
+	<div class="col-6 col-md-3">
+		<div class="card shadow-sm text-center"><div class="card-body">
+			<div class="display-6" id="stat-users">–</div>
+			<div class="text-muted small text-uppercase">Users seen</div>
+		</div></div>
+	</div>
+</div>
+
+<div class="row g-3 mb-4">
+	<div class="col-md-6">
+		<div class="card shadow-sm"><div class="card-header"><i class="fa-solid fa-server me-1"></i> Top hosts</div>
+			<table class="table table-sm mb-0"><tbody id="top-hosts"></tbody></table>
+		</div>
+	</div>
+	<div class="col-md-6">
+		<div class="card shadow-sm"><div class="card-header"><i class="fa-solid fa-user me-1"></i> Top users</div>
+			<table class="table table-sm mb-0"><tbody id="top-users"></tbody></table>
+		</div>
+	</div>
+</div>
+
 <div class="card shadow-sm">
 	<div class="card-header"><i class="fa-solid fa-clipboard-list me-1"></i> Audit log</div>
 	<div class="card-body pb-0">
@@ -33,6 +73,25 @@
 </div>
 
 <script type="text/javascript">
+	function rows(sel, list){
+		var $b = $(sel).empty();
+		if(!list || !list.length){ $b.append('<tr><td class="text-muted">No data.</td></tr>'); return; }
+		list.forEach(function(x){
+			$b.append('<tr><td>' + app.jump.esc(x.name) + '</td><td class="text-end">' + x.count + '</td></tr>');
+		});
+	}
+	function loadMetrics(){
+		app.jump.metrics(function(error, data){
+			if(error || !data) return;
+			$('#stat-active').text(data.active);
+			$('#stat-total').text(data.total);
+			$('#stat-fail').text(data.fail);
+			$('#stat-users').text((data.topUsers || []).length);
+			rows('#top-hosts', data.topHosts);
+			rows('#top-users', data.topUsers);
+		});
+	}
+
 	var page = 0;
 	function filters(){ return {page: page, uid: $('#f-uid').val(), target: $('#f-target').val(), status: $('#f-status').val()}; }
 	function applyFilters(){ page = 0; load(); }
@@ -59,6 +118,9 @@
 			$('#next').prop('disabled', (page + 1) * size >= total);
 		});
 	}
-	$(document).ready(load);
+	$(document).ready(function(){
+		loadMetrics();
+		load();
+	});
 </script>
 <%- include('bottom') %>
