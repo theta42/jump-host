@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.11.0] - 2026-07-30
+
+### Added
+- **`app_super_admin` (cross-app) and `app_jump_admin` groups**: super admins are full admins here same as `app_sso_admin`; jump admins get audit page/data access without other admin rights. The Audit page/API is now actually admin-gated server-side (previously the page shell rendered for any logged-in user, only its data was gated).
+- **Host list adds Last connection/Last failed connection columns** and highlights rows green (a session is live right now) or yellow (the most recent attempt failed), backed by new per-host last-success/last-fail timestamps in `models/metrics.js`. `services/ssh_server.js` now attributes grammar/TUI connect failures to the resolved host when one was found, not just aggregate counters.
+
+### Changed
+- **Dashboard's stat boxes and Top hosts/Top users cards moved to the Audit page** (audit is now the admin-facing metrics home; dashboard stays focused on "hosts I can reach"). "All hosts" renamed to "My hosts".
+
 ## [1.10.2] - 2026-07-30
 
 ### Changed
