@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.10.2] - 2026-07-30
+
+### Changed
+- **Dashboard, Sessions, and Audit pages now match sso-manager-node/proxy's page width**, wrapping content in a standard container instead of rendering full-bleed inside the fluid shell.
+- **Audit's nav entry is now admin-gated** (`groups: ['admin']` in `utils/ui.js`), reusing the existing synthetic-admin-group nav-gating convention — the API route was already server-side admin-gated; this hides the nav link for non-admins too.
+
 ## [1.10.1] - 2026-07-28
 
 ### Fixed
