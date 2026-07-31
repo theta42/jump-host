@@ -9,10 +9,29 @@ const ESC = '\x1b';
 const CLEAR = `${ESC}[2J${ESC}[H`;
 const HIDE_CUR = `${ESC}[?25l`;
 const SHOW_CUR = `${ESC}[?25h`;
-const INV = `${ESC}[7m`;
+
+// Basic styles
 const RST = `${ESC}[0m`;
-const DIM = `${ESC}[2m`;
 const BOLD = `${ESC}[1m`;
+const DIM = `${ESC}[2m`;
+
+// Colors (30-37: standard, 90-97: bright)
+const RED = `${ESC}[31m`;
+const BRIGHT_RED = `${ESC}[91m`;
+const CYAN = `${ESC}[36m`;
+const BRIGHT_CYAN = `${ESC}[96m`;
+const GREEN = `${ESC}[32m`;
+const BRIGHT_GREEN = `${ESC}[92m`;
+const YELLOW = `${ESC}[33m`;
+const BRIGHT_YELLOW = `${ESC}[93m`;
+const MAGENTA = `${ESC}[35m`;
+const BRIGHT_MAGENTA = `${ESC}[95m`;
+const BLUE = `${ESC}[34m`;
+const BRIGHT_BLUE = `${ESC}[94m`;
+
+// Inverted selection with color
+const INV_GREEN = `${ESC}[42m${ESC}[30m`;  // Green bg, black text
+const INV = `${ESC}[7m`;
 
 function pickHost(channel, uid, hosts) {
 	return new Promise((resolve) => {
@@ -35,18 +54,43 @@ function pickHost(channel, uid, hosts) {
 			const list = visible();
 			if (selected >= list.length) selected = Math.max(0, list.length - 1);
 			let out = CLEAR + HIDE_CUR;
-			out += `${BOLD}  Theta42 Jump — hosts for ${uid}${RST}\r\n`;
-			out += `${DIM}  ↑/↓ move · Enter connect · type to filter · q quit${RST}\r\n\r\n`;
+
+			// Header with gradient-style color
+			out += `\r\n  ${BOLD}${BRIGHT_CYAN}╔════════════════════════════════════════════════════════╗${RST}\r\n`;
+			out += `  ${BOLD}${BRIGHT_CYAN}║${RST}  ${BOLD}${BRIGHT_MAGENTA}Theta42 Jump${RST} ${DIM}·${RST} ${BRIGHT_GREEN}hosts for ${uid}${RST}                      ${BOLD}${BRIGHT_CYAN}║${RST}\r\n`;
+			out += `  ${BOLD}${BRIGHT_CYAN}╚════════════════════════════════════════════════════════╝${RST}\r\n`;
+			out += `\r\n`;
+			out += `  ${DIM}↑/↓ move · Enter connect · type to filter · q quit${RST}\r\n`;
+			out += `\r\n`;
+
 			if (!list.length) {
-				out += `  ${DIM}(no match for "${filter}")${RST}\r\n`;
+				out += `  ${YELLOW}⚠${RST}  ${DIM}(no match for "${filter}")${RST}\r\n`;
 			} else {
 				list.forEach((h, i) => {
 					const ip = (h.metadata && h.metadata.ip) || (h.metadata && h.metadata.address) || '';
-					const row = `  ${h.name}  ${DIM}(${h.slug})${RST}${ip ? `  ${ip}` : ''}`;
-					out += (i === selected ? `${INV}> ${h.name}  (${h.slug})${ip ? `  ${ip}` : ''}${RST}` : row) + '\r\n';
+					const isProd = h.metadata && h.metadata.isProduction;
+					const envBadge = isProd ? `${BOLD}${RED}PROD${RST} ` : `${DIM}DEV${RST}  `;
+
+					if (i === selected) {
+						// Selected row with green inverse background
+						const selRow = `${INV_GREEN}  ${h.name}  ${DIM}(${h.slug})${RST}${ip ? `  ${CYAN}${ip}${RST}` : ''}  ${envBadge}  ${BOLD}${BRIGHT_GREEN}◄ SELECTED ►${RST}${INV_GREEN}${RST}`;
+						out += selRow + '\r\n';
+					} else {
+						// Normal row with subtle coloring
+						const nameColor = i % 2 === 0 ? BRIGHT_CYAN : CYAN;
+						out += `  ${nameColor}${h.name}${RST}  ${DIM}(${h.slug})${RST}${ip ? `  ${BLUE}${ip}${RST}` : ''}  ${envBadge}\r\n`;
+					}
 				});
 			}
-			if (filter) out += `\r\n  ${DIM}filter:${RST} ${filter}`;
+
+			if (filter) {
+				out += `\r\n  ${DIM}filter: ${BRIGHT_YELLOW}${filter}${RST}`;
+			}
+
+			// Footer
+			out += `\r\n\r\n  ${DIM}────────────────────────────────────────────────────────${RST}\r\n`;
+			out += `  ${DIM}Press${RST} ${BOLD}1-9${RST} ${DIM}to quick-select · ${BOLD}q${RST} ${DIM}to quit${RST}\r\n`;
+
 			channel.write(out);
 		};
 
