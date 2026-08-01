@@ -4,6 +4,18 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.14.1] - 2026-08-01
+
+### Fixed
+- **Bumped `@simpleworkjs/bao-conf` to 1.0.1** so standalone/no-OpenBao boots
+  don't crash. bao-conf 1.0.0's `init()` threw when `VAULT_TOKEN` was unset,
+  which — combined with `bin/www`'s `.catch(() => process.exit(1))` — made the
+  jump host exit at boot in any deployment without an OpenBao sidecar
+  (standalone Docker, bare metal). 1.0.1 makes `init()` fail-soft on a missing
+  token (warn + continue from `CONF_SECRETS`), matching the documented
+  contract. The theta-env stack is unaffected (it always sets a scoped
+  `VAULT_TOKEN`).
+
 ## [1.14.0] - 2026-08-01
 
 ### Changed
