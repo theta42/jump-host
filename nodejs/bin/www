@@ -9,32 +9,43 @@ const http = require('http');
 const conf = require('@simpleworkjs/conf');
 const { Server } = require('socket.io');
 
-require('../models');
+// @simpleworkjs/conf loads ./config/jump-secrets.js synchronously, then
+// @simpleworkjs/bao-conf deep-merges secret/jump-host/conf from OpenBao over
+// it. The OIDC clientSecret is captured at require time inside models (via
+// createOidcClient), so the fetch MUST resolve before require('../models').
+// Fail-soft: if OpenBao is unreachable, init() leaves conf as the file-loaded
+// fallback and boot continues from ./config/jump-secrets.js.
+require('@simpleworkjs/bao-conf').init({ path: 'jump-host', conf }).then(() => {
+	require('../models');
 
-const app = require('../app');
-const middleware = require('../middleware/auth');
-const sshServer = require('../services/ssh_server');
+	const app = require('../app');
+	const middleware = require('../middleware/auth');
+	const sshServer = require('../services/ssh_server');
 
-const webPort = (conf.web && conf.web.port) || 3002;
-const server = http.createServer(app);
+	const webPort = (conf.web && conf.web.port) || 3002;
+	const server = http.createServer(app);
 
-// Socket.IO — the client framework (app-base.js) opens an authenticated socket.
-// We don't push anything yet, but serving /socket.io keeps the shared front-end
-// working exactly as it does in the sibling apps.
-const io = new Server(server);
-io.use(middleware.authIO);
-app.io = io;
+	// Socket.IO — the client framework (app-base.js) opens an authenticated socket.
+	// We don't push anything yet, but serving /socket.io keeps the shared front-end
+	// working exactly as it does in the sibling apps.
+	const io = new Server(server);
+	io.use(middleware.authIO);
+	app.io = io;
 
-server.listen(webPort, () => {
-	console.log(`[web] jump-host UI/API on :${server.address().port}`);
+	server.listen(webPort, () => {
+		console.log(`[web] jump-host UI/API on :${server.address().port}`);
+	});
+
+	sshServer.start();
+
+	function shutdown() {
+		console.log('[jump-host] shutting down');
+		server.close();
+		process.exit(0);
+	}
+	process.on('SIGTERM', shutdown);
+	process.on('SIGINT', shutdown);
+}).catch(err => {
+	console.error('boot failed:', err);
+	process.exit(1);
 });
-
-sshServer.start();
-
-function shutdown() {
-	console.log('[jump-host] shutting down');
-	server.close();
-	process.exit(0);
-}
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);

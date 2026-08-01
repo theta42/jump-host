@@ -4,6 +4,22 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 correspond to git tags (`vX.Y.Z`) and `nodejs/package.json`'s `version`.
 
+## [1.14.0] - 2026-08-01
+
+### Changed
+- **Secrets now load from OpenBao at boot** via
+  [@simpleworkjs/bao-conf](https://simpleworkjs.github.io/bao-conf/), which
+  deep-merges `secret/jump-host/conf` over the file-loaded config. The jump
+  host authenticates to OpenBao with a scoped `VAULT_TOKEN` (policy
+  `jump-host` — read-only on its own path), never the root token. Because the
+  OIDC `clientSecret` is captured at require time inside `createOidcClient`
+  (during `require('../models')`), `bin/www` now runs `bao-conf.init()`
+  **before** `require('../models')`. Fail-soft: if OpenBao is unreachable,
+  boot continues from `CONF_SECRETS`. The `config/jump-secrets.js` file is now
+  an operator-edit seed artifact (gitignored); OpenBao is authoritative. See
+  theta-env's [Secrets docs](https://theta42.github.io/theta-env/secrets/).
+- Bumped package version to track the release tag.
+
 ## [1.11.0] - 2026-07-30
 
 ### Added

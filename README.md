@@ -159,6 +159,22 @@ Config layers via [@simpleworkjs/conf](https://www.npmjs.com/package/@simplework
 `conf/base.js` < `conf/<NODE_ENV>.js` < the `CONF_SECRETS` file < `app_*` env.
 See `secrets.js.example` for every key.
 
+## Secrets
+
+At boot, [@simpleworkjs/bao-conf](https://simpleworkjs.github.io/bao-conf/)
+deep-merges `secret/jump-host/conf` from **OpenBao** over the file-loaded
+config. The jump host's OIDC `clientSecret` is captured at require time
+(inside `createOidcClient` during `require('../models')`), so `bin/www` runs
+`bao-conf.init()` **before** `require('../models')`. Fail-soft: if OpenBao is
+unreachable, boot continues from `CONF_SECRETS`. The jump host authenticates to
+OpenBao with the scoped `VAULT_TOKEN` (env, policy `jump-host` — read only
+`secret/jump-host/conf`), never the root token.
+
+The `config/jump-secrets.js` file is an operator-edit seed artifact
+(gitignored); the bootstrap writes the generated API token + OAuth client
+into OpenBao, which is authoritative. For the full architecture see
+theta-env's **[Secrets docs](https://theta42.github.io/theta-env/secrets/)**.
+
 ## Development
 
 ```
