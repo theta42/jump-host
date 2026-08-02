@@ -129,14 +129,26 @@ async function resolveAndConnect(state, record, { onHostKey } = {}) {
 	await record.patch({ targetSlug: host ? host.slug : 'raw-ip', targetAddr: endpoint.address, targetPort: endpoint.port });
 
 	let justInjected = false;
-	try { justInjected = await ensureKeyInjected(state.user, JUMP_KEYS.publicLine); }
-	catch (err) { throw fail('key-inject-failed', err.message, host ? host.slug : undefined); }
+	let cert;
+	const usePki = conf.ssh && conf.ssh.pki && conf.ssh.pki.enabled;
+
+	try {
+		if (usePki) {
+			const { getSignedCert } = require('../utils/vault_cert');
+			cert = await getSignedCert(JUMP_KEYS.publicLine, state.uid);
+		} else {
+			justInjected = await ensureKeyInjected(state.user, JUMP_KEYS.publicLine);
+		}
+	} catch (err) {
+		const failType = usePki ? 'pki-cert-failed' : 'key-inject-failed';
+		throw fail(failType, err.message, host ? host.slug : undefined);
+	}
 
 	let upstream;
 	try {
 		upstream = await connectUpstream({
 			host: endpoint.address, port: endpoint.port,
-			username: state.uid, privateKey: JUMP_KEYS.clientKey,
+			username: state.uid, privateKey: JUMP_KEYS.clientKey, cert,
 			uid: state.uid, justInjected, onHostKey,
 		});
 	} catch (err) { throw fail('upstream-unreachable', err.message, host ? host.slug : undefined); }
@@ -228,14 +240,26 @@ async function runTuiSession(session, client, state) {
 	await record.patch({ targetSlug: tui.host.slug, targetAddr: endpoint.address, targetPort: endpoint.port });
 
 	let justInjected = false;
-	try { justInjected = await ensureKeyInjected(state.user, JUMP_KEYS.publicLine); }
-	catch (err) { return finishFail('key-inject-failed', err.message, tui.host.slug); }
+	let cert;
+	const usePki = conf.ssh && conf.ssh.pki && conf.ssh.pki.enabled;
+
+	try {
+		if (usePki) {
+			const { getSignedCert } = require('../utils/vault_cert');
+			cert = await getSignedCert(JUMP_KEYS.publicLine, state.uid);
+		} else {
+			justInjected = await ensureKeyInjected(state.user, JUMP_KEYS.publicLine);
+		}
+	} catch (err) {
+		const failType = usePki ? 'pki-cert-failed' : 'key-inject-failed';
+		return finishFail(failType, err.message, tui.host.slug);
+	}
 
 	let upstream;
 	try {
 		upstream = await connectUpstream({
 			host: endpoint.address, port: endpoint.port,
-			username: state.uid, privateKey: JUMP_KEYS.clientKey,
+			username: state.uid, privateKey: JUMP_KEYS.clientKey, cert,
 			uid: state.uid, justInjected, onHostKey: (fp) => record.patch({ hostKeyFp: fp }),
 		});
 	} catch (err) {

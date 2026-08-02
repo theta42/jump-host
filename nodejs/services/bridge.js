@@ -23,7 +23,7 @@ function counter(onBytes) {
 // Connect the upstream ssh2.Client, retrying once after a short pause if the
 // first attempt fails auth (SSSD/AuthorizedKeysCommand cache lag right after a
 // first-time key injection).
-function connectUpstream({ host, port, username, privateKey, onHostKey, uid, justInjected }) {
+function connectUpstream({ host, port, username, privateKey, cert, onHostKey, uid, justInjected }) {
 	return new Promise((resolve, reject) => {
 		let attempted = false;
 		const dial = (allowRetry) => {
@@ -42,6 +42,7 @@ function connectUpstream({ host, port, username, privateKey, onHostKey, uid, jus
 				})
 				.connect({
 					host, port, username, privateKey,
+					certificates: cert ? [cert] : undefined,
 					readyTimeout: (conf.ssh && conf.ssh.connectTimeoutMs) || 10000,
 					keepaliveInterval: 15000,
 					hostVerifier: (key) => {
