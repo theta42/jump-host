@@ -1,3 +1,6 @@
+## v1.16.1
+- fix: remove missing DEPLOYMENT.md from Docker build context
+
 ## v1.16.0
 - Added OpenBao PKI SSH Certificate Support
 - Fallback to LDAP Key injection

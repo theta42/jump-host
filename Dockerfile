@@ -37,7 +37,7 @@ COPY nodejs/utils ./utils
 COPY nodejs/views ./views
 COPY nodejs/public ./public
 
-COPY README.md CHANGELOG.md DEPLOYMENT.md /
+COPY README.md CHANGELOG.md /
 COPY --from=gitinfo /commit.txt ./.build_commit
 
 COPY docker-entrypoint.sh /usr/local/bin/
