@@ -1,3 +1,7 @@
+## v1.16.0
+- Added OpenBao PKI SSH Certificate Support
+- Fallback to LDAP Key injection
+
 # v1.15.0
 - feat: Rename SSO Manager to Jump in UI
 
