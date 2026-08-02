@@ -1,3 +1,6 @@
+# v1.15.0
+- feat: Rename SSO Manager to Jump in UI
+
 # Changelog
 
 All notable changes to this project are documented here. Format loosely
