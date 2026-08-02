@@ -8,39 +8,33 @@ function stubLdap(groups) {
 	return { getGroups: async () => groups };
 }
 
-function stubFetch(byGroup) {
+function stubFetch(byUid) {
 	return async (url) => {
-		const cn = decodeURIComponent(url.split('group=')[1]);
-		return { ok: true, json: async () => ({ results: byGroup[cn] || [] }) };
+		const uid = url.split('/access/')[1];
+		return { ok: true, json: async () => ({ results: byUid[uid] || [] }) };
 	};
 }
 
-test('unions hosts across groups, dedupes, drops non-hosts', async () => {
+test('drops non-hosts from access projection', async () => {
 	clearCache();
 	const user = { uid: 'alice', dn: 'uid=alice,ou=people,dc=x' };
 	const fetchImpl = stubFetch({
-		host_web01_access: [
+		alice: [
 			{ id: '1', kind: 'host', slug: 'host_web01' },
+			{ id: '2', kind: 'host', slug: 'host_db' },
 			{ id: '9', kind: 'service', slug: 'app_gitea' }, // dropped: not a host
 		],
-		host_db_access: [
-			{ id: '1', kind: 'host', slug: 'host_web01' }, // dupe by id
-			{ id: '2', kind: 'host', slug: 'host_db' },
-		],
 	});
-	const hosts = await accessibleHosts(user, { fetchImpl, ldap: stubLdap(['host_web01_access', 'host_db_access']) });
+	const hosts = await accessibleHosts(user, { fetchImpl });
 	assert.deepStrictEqual(hosts.map((h) => h.id).sort(), ['1', '2']);
 });
 
-test('a failing group query does not sink the rest', async () => {
+test('a failing access query returns empty list without throwing', async () => {
 	clearCache();
 	const user = { uid: 'bob', dn: 'uid=bob,ou=people,dc=x' };
-	const fetchImpl = async (url) => {
-		if (url.includes('bad')) return { ok: false, status: 500 };
-		return { ok: true, json: async () => ({ results: [{ id: '3', kind: 'host', slug: 'host_ok' }] }) };
-	};
-	const hosts = await accessibleHosts(user, { fetchImpl, ldap: stubLdap(['bad_access', 'good_access']) });
-	assert.deepStrictEqual(hosts.map((h) => h.id), ['3']);
+	const fetchImpl = async () => ({ ok: false, status: 500 });
+	const hosts = await accessibleHosts(user, { fetchImpl });
+	assert.deepStrictEqual(hosts, []);
 });
 
 test('caches per uid', async () => {
@@ -48,23 +42,19 @@ test('caches per uid', async () => {
 	let calls = 0;
 	const user = { uid: 'cara', dn: 'd' };
 	const fetchImpl = async () => { calls++; return { ok: true, json: async () => ({ results: [] }) }; };
-	const ldap = { getGroups: async () => ['g1'] };
-	await accessibleHosts(user, { fetchImpl, ldap });
-	await accessibleHosts(user, { fetchImpl, ldap });
+	await accessibleHosts(user, { fetchImpl });
+	await accessibleHosts(user, { fetchImpl });
 	assert.strictEqual(calls, 1);
 });
 
-test('accepts pre-resolved groups (web UI/OIDC session) without calling ldap.getGroups', async () => {
+test('does not depend on user.groups or ldap.getGroups', async () => {
 	clearCache();
-	let ldapCalled = false;
-	const user = { uid: 'erin', groups: ['host_web01_access'] };
+	const user = { uid: 'erin' }; // no dn, no groups
 	const fetchImpl = stubFetch({
-		host_web01_access: [{ id: '5', kind: 'host', slug: 'host_web01' }],
+		erin: [{ id: '5', kind: 'host', slug: 'host_web01' }],
 	});
-	const ldap = { getGroups: async () => { ldapCalled = true; return []; } };
-	const hosts = await accessibleHosts(user, { fetchImpl, ldap });
+	const hosts = await accessibleHosts(user, { fetchImpl });
 	assert.deepStrictEqual(hosts.map((h) => h.id), ['5']);
-	assert.strictEqual(ldapCalled, false);
 });
 
 test('allHosts fetches the whole host inventory with no group filter', async () => {
@@ -80,16 +70,14 @@ test('allHosts fetches the whole host inventory with no group filter', async () 
 	assert.deepStrictEqual(hosts.map((h) => h.id).sort(), ['1', '2']);
 });
 
-test('a bare-array response (envelope drift) is treated as a failed group, not silently []', async () => {
+test('a bare-array response (envelope drift) returns empty list', async () => {
 	clearCache();
 	const user = { uid: 'dave', dn: 'd' };
 	// drift shape: a bare array instead of { results: [...] }. The shared client
-	// throws DirectoryEnvelopeViolation; access.js must catch + continue, so a
-	// good group alongside still yields its hosts.
-	const fetchImpl = async (url) => {
-		if (url.includes('drift')) return { ok: true, json: async () => [{ id: '7', kind: 'host' }] };
-		return { ok: true, json: async () => ({ results: [{ id: '8', kind: 'host' }] }) };
+	// throws DirectoryEnvelopeViolation; access.js must catch + continue.
+	const fetchImpl = async () => {
+		return { ok: true, json: async () => [{ id: '7', kind: 'host' }] };
 	};
-	const hosts = await accessibleHosts(user, { fetchImpl, ldap: stubLdap(['drift_access', 'good_access']) });
-	assert.deepStrictEqual(hosts.map((h) => h.id), ['8']);
+	const hosts = await accessibleHosts(user, { fetchImpl });
+	assert.deepStrictEqual(hosts, []);
 });

@@ -17,14 +17,9 @@ if (conf.standalone && conf.standalone.enabled) {
 
 	// Which directory hosts may a user reach, and how do we dial them?
 	//
-	// v1 resolution (see directory_spec.md §9.2 in sso-manager-node): the SSO's
-	// /api/discovery/me only answers for the API token's own user, and /graph
-	// omits ResourceGroup links — so we combine the user's LDAP groups (queried
-	// directly) with per-group resource lookups:
-	//
-	//   1. LDAP: groups the user's DN is a member of
-	//   2. SSO:  GET /api/discovery/resources?group=<cn>  per group (ApiToken)
-	//   3. union, keep kind === 'host'
+	// We use the SSO's machine-aware /api/discovery/access/:uid endpoint,
+	// which evaluates the user's groups server-side and returns their complete
+	// access projection in one call.
 	//
 	// Results are cached per-uid for a short TTL — the TUI picker and the
 	// username-grammar path share the cache. Dependency-injected fetch/ldap for
@@ -56,32 +51,18 @@ if (conf.standalone && conf.standalone.enabled) {
 		return resources.filter(r => r.kind === 'host');
 	}
 
-	async function accessibleHosts(user, { fetchImpl = fetch, ldap = userLdap } = {}) {
+	async function accessibleHosts(user, { fetchImpl = fetch } = {}) {
 		const hit = cache.get(user.uid);
 		if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.hosts;
 
-		// The SSH path passes an LDAP user ({dn, uid, ...}) with no .groups, so we
-		// look them up; the web UI already has the session's OIDC groups claim
-		// and passes it directly, skipping a redundant LDAP round-trip.
-		const groups = user.groups || await ldap.getGroups(user.dn);
-
-		const seen = new Map();
-		for (const cn of groups) {
-			let resources;
-			try {
-				resources = await fetchResourcesByGroup(cn, { fetchImpl });
-			} catch (error) {
-				// One bad group must not hide the rest; the SSO being down
-				// surfaces as an empty list + log line, not a crash.
-				console.error(`[access] ${error.message}`);
-				continue;
-			}
-			for (const r of resources) {
-				if (r.kind === 'host' && !seen.has(r.id)) seen.set(r.id, r);
-			}
+		let resources = [];
+		try {
+			resources = await directoryClient({ fetchImpl }).getAccess(user.uid);
+		} catch (error) {
+			console.error(`[access] ${error.message}`);
 		}
 
-		const hosts = [...seen.values()];
+		const hosts = resources.filter(r => r.kind === 'host');
 		cache.set(user.uid, { at: Date.now(), hosts });
 		return hosts;
 	}
