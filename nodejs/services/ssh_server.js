@@ -150,6 +150,7 @@ async function resolveAndConnect(state, record, { onHostKey } = {}) {
 			host: endpoint.address, port: endpoint.port,
 			username: state.uid, privateKey: JUMP_KEYS.clientKey, cert,
 			uid: state.uid, justInjected, onHostKey,
+			expectedHostKeyFp: host && host.metadata && host.metadata.sshHostKeyFp,
 		});
 	} catch (err) { throw fail('upstream-unreachable', err.message, host ? host.slug : undefined); }
 
@@ -261,6 +262,7 @@ async function runTuiSession(session, client, state) {
 			host: endpoint.address, port: endpoint.port,
 			username: state.uid, privateKey: JUMP_KEYS.clientKey, cert,
 			uid: state.uid, justInjected, onHostKey: (fp) => record.patch({ hostKeyFp: fp }),
+			expectedHostKeyFp: tui.host && tui.host.metadata && tui.host.metadata.sshHostKeyFp,
 		});
 	} catch (err) {
 		try { tui.channel.write(`\r\n  Could not reach ${endpoint.address}.\r\n`); tui.channel.close(); } catch (_) {}

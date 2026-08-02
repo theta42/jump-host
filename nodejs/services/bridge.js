@@ -23,7 +23,7 @@ function counter(onBytes) {
 // Connect the upstream ssh2.Client, retrying once after a short pause if the
 // first attempt fails auth (SSSD/AuthorizedKeysCommand cache lag right after a
 // first-time key injection).
-function connectUpstream({ host, port, username, privateKey, cert, onHostKey, uid, justInjected }) {
+function connectUpstream({ host, port, username, privateKey, cert, onHostKey, uid, justInjected, expectedHostKeyFp }) {
 	return new Promise((resolve, reject) => {
 		let attempted = false;
 		const dial = (allowRetry) => {
@@ -48,7 +48,10 @@ function connectUpstream({ host, port, username, privateKey, cert, onHostKey, ui
 					hostVerifier: (key) => {
 						const fp = 'SHA256:' + crypto.createHash('sha256').update(key).digest('base64').replace(/=+$/, '');
 						if (onHostKey) onHostKey(fp);
-						return true; // v1: trust-on-use, fingerprint audited. Pinning = follow-up.
+						if (expectedHostKeyFp && expectedHostKeyFp !== fp) {
+							return false;
+						}
+						return true; // v1: trust-on-use if not pinned, fingerprint audited.
 					},
 				});
 		};
