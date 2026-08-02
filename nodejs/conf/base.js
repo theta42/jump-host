@@ -6,7 +6,7 @@
 // values (LDAP creds, SSO API token) belong in the secrets file.
 
 module.exports = {
-	name: 'SSO Manager',
+	name: 'Jump',
 	logo: '/static/img/theta42.svg',
 
 	// LDAP directory the users live in (same directory the SSO manages).
