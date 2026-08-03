@@ -46,9 +46,19 @@ if (conf.standalone && conf.standalone.enabled) {
 
 	// Every host in the inventory, unfiltered — for admins (the web UI's own
 	// account is already gated by requireAdmin before this is ever called).
+	function isManagedHost(r) {
+		if (!r || r.kind !== 'host') return false;
+		// If managed attribute is present, require it to be true/truthy
+		if (r.metadata && r.metadata.managed !== undefined) {
+			return r.metadata.managed === true || r.metadata.managed === 'true';
+		}
+		// Default to true for manually created hosts that lack explicit managed metadata
+		return true;
+	}
+
 	async function allHosts({ fetchImpl = fetch } = {}) {
 		const resources = await directoryClient({ fetchImpl }).getResourcesByGroup(undefined, { kind: 'host' });
-		return resources.filter(r => r.kind === 'host');
+		return resources.filter(isManagedHost);
 	}
 
 	async function accessibleHosts(user, { fetchImpl = fetch } = {}) {
@@ -62,7 +72,7 @@ if (conf.standalone && conf.standalone.enabled) {
 			console.error(`[access] ${error.message}`);
 		}
 
-		const hosts = resources.filter(r => r.kind === 'host');
+		const hosts = resources.filter(isManagedHost);
 		cache.set(user.uid, { at: Date.now(), hosts });
 		return hosts;
 	}
