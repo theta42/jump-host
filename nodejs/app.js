@@ -4,6 +4,8 @@ const express = require('express');
 const compression = require('compression');
 
 require('./models'); // wire model-redis + register models
+const conf = require('@simpleworkjs/conf');
+const buildInfo = require('./utils/build_info');
 
 const app = express();
 
@@ -41,7 +43,15 @@ app.use((err, req, res, next) => {
 	if(req.path.startsWith('/api/')){
 		return res.status(status).json({name: err.name || 'Error', message: err.message || 'Error'});
 	}
-	res.status(status).send(err.message || 'Error');
+	// Browser navigation gets the HTML error page (shared with SSO).
+	res.status(status).render('error', {
+		title: conf.environment !== 'production' ? 'dev' : '',
+		titleIcon: conf.environment !== 'production' ? '<i class="fa-brands fa-dev"></i>' : '',
+		name: conf.name,
+		logo: conf.logo,
+		...buildInfo,
+		error: err,
+	});
 });
 
 module.exports = app;

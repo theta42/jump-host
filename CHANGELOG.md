@@ -1,3 +1,7 @@
+## v1.18.0
+- feat: Add SSO-style error page (404/500) for browser navigation instead of a bare text response
+- feat: navbar — username no longer underlined; only the active link is bold + underlined
+
 ## v1.16.1
 - fix: remove missing DEPLOYMENT.md from Docker build context
 
