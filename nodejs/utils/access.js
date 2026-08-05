@@ -46,19 +46,30 @@ if (conf.standalone && conf.standalone.enabled) {
 
 	// Every host in the inventory, unfiltered — for admins (the web UI's own
 	// account is already gated by requireAdmin before this is ever called).
-	function isManagedHost(r) {
+	//
+	// "In the catalog" is the same predicate the SSO's own Directory listing
+	// applies (sso-manager-node routes/api_directory_admin.js GET /resources):
+	// a resource that was auto-discovered and never promoted is NOT catalog
+	// content and must never be offered as a jump target. Discovery writes
+	// `metadata.discovery_sources`; promoting sets `metadata.managed = true`.
+	// Hosts created by hand carry no discovery_sources at all and stay in.
+	//
+	// The two copies of this rule have already drifted apart once (unpromoted
+	// Proxmox VMs showing up in the picker); if a third consumer needs it,
+	// hoist it into @simpleworkjs/directory-schema rather than copying again.
+	function isCatalogHost(r) {
 		if (!r || r.kind !== 'host') return false;
-		// If managed attribute is present, require it to be true/truthy
-		if (r.metadata && r.metadata.managed !== undefined) {
-			return r.metadata.managed === true || r.metadata.managed === 'true';
-		}
-		// Default to true for manually created hosts that lack explicit managed metadata
-		return true;
+		const meta = r.metadata || {};
+		if (meta.managed === true || meta.managed === 'true') return true;
+		if (meta.managed === false || meta.managed === 'false') return false;
+		const sources = meta.discovery_sources || [];
+		const autoDiscovered = sources.length > 0 && !sources.includes('manual');
+		return !autoDiscovered;
 	}
 
 	async function allHosts({ fetchImpl = fetch } = {}) {
 		const resources = await directoryClient({ fetchImpl }).getResourcesByGroup(undefined, { kind: 'host' });
-		return resources.filter(isManagedHost);
+		return resources.filter(isCatalogHost);
 	}
 
 	async function accessibleHosts(user, { fetchImpl = fetch } = {}) {
@@ -72,7 +83,7 @@ if (conf.standalone && conf.standalone.enabled) {
 			console.error(`[access] ${error.message}`);
 		}
 
-		const hosts = resources.filter(isManagedHost);
+		const hosts = resources.filter(isCatalogHost);
 		cache.set(user.uid, { at: Date.now(), hosts });
 		return hosts;
 	}

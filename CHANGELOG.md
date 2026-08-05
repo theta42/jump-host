@@ -1,3 +1,8 @@
+## v1.19.0
+- fix: **only catalog hosts are jump targets.** `isManagedHost` treated a missing `metadata.managed` flag as permission, so any host the SSO merely *discovered* — an unpromoted Proxmox guest, a UniFi client — was offered in the TUI picker and accepted by the username grammar. The filter is now `isCatalogHost`, mirroring the SSO Directory's own rule: a resource carrying `discovery_sources` but never promoted is excluded, while hand-created hosts (no `discovery_sources`) and promoted ones (`managed: true`) are included, and an explicit `managed: false` is always excluded.
+- test: regression coverage for all five cases (hand-made, discovered-unpromoted, discovered-promoted, `manual` source, explicitly unmanaged).
+- docs: `docs/connecting.md` states that discovery results are not jump targets until promoted into the catalog.
+
 ## v1.18.0
 - feat: Add SSO-style error page (404/500) for browser navigation instead of a bare text response
 - feat: navbar — username no longer underlined; only the active link is bold + underlined
