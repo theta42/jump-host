@@ -66,13 +66,21 @@ directory access allows — it doubles as "what can I reach from here?"
 ## What you can reach
 
 The set of hosts is computed per login: your LDAP group memberships intersected
-with the SSO directory's hosts (via the `host_<name>_access` groups the
-directory auto-creates for each machine). To get access to a new host, an admin
-adds you to that host's access group in the SSO — nothing on the jump host
+with the SSO directory's **catalog** hosts (via the `host_<name>_access` groups
+the directory auto-creates for each machine). To get access to a new host, an
+admin adds you to that host's access group in the SSO — nothing on the jump host
 changes.
 
 Targets that don't resolve to a host you're allowed to reach are refused (and
 audited). Raw IPs that aren't a known directory host are denied by default.
+
+**Only catalog hosts are jump targets.** A machine that the SSO merely
+*discovered* — a Proxmox guest, a UniFi client — is not a jump target until an
+admin promotes it into the directory catalog. The jump host applies the same
+rule the SSO's own Directory listing does: a resource carrying
+`discovery_sources` but never promoted is excluded, while hand-created hosts and
+promoted ones are included. Previously the filter treated a missing `managed`
+flag as permission, so unpromoted discovery results showed up in the picker.
 
 > On a [standalone](architecture.html#standalone-mode) jump host (no LDAP/SSO),
 > every registered host is reachable by every registered user — there's no

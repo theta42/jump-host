@@ -70,6 +70,25 @@ test('allHosts fetches the whole host inventory with no group filter', async () 
 	assert.deepStrictEqual(hosts.map((h) => h.id).sort(), ['1', '2']);
 });
 
+// Only catalog content is a jump target. Discovery writes `discovery_sources`;
+// promoting to the catalog sets `managed: true`. An unpromoted Proxmox VM was
+// reaching the picker because the filter defaulted `managed`-less hosts to true.
+test('drops auto-discovered hosts that were never promoted', async () => {
+	clearCache();
+	const user = { uid: 'frank', dn: 'd' };
+	const fetchImpl = stubFetch({
+		frank: [
+			{ id: '1', kind: 'host', slug: 'host_web01' },                                          // hand-made: no discovery_sources
+			{ id: '2', kind: 'host', slug: 'vm-101', metadata: { discovery_sources: ['proxmox'] } }, // discovered, unpromoted
+			{ id: '3', kind: 'host', slug: 'vm-102', metadata: { discovery_sources: ['proxmox'], managed: true } }, // promoted
+			{ id: '4', kind: 'host', slug: 'host_db', metadata: { discovery_sources: ['manual'] } }, // manual source counts as catalog
+			{ id: '5', kind: 'host', slug: 'host_off', metadata: { managed: false } },               // explicitly out
+		],
+	});
+	const hosts = await accessibleHosts(user, { fetchImpl });
+	assert.deepStrictEqual(hosts.map((h) => h.id).sort(), ['1', '3', '4']);
+});
+
 test('a bare-array response (envelope drift) returns empty list', async () => {
 	clearCache();
 	const user = { uid: 'dave', dn: 'd' };
