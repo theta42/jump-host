@@ -1,3 +1,6 @@
+## v1.19.1
+- docs: README.md and docs/architecture.md described host-access authorization as a client-side loop over each of a user's LDAP groups (`GET /api/discovery/resources?group=<cn>` per group). The actual code (`utils/access.js`, `accessibleHosts()`) makes one call to the SSO's `GET /api/discovery/access/:uid`, which resolves the user's groups server-side. Corrected both.
+
 ## v1.19.0
 - fix: **only catalog hosts are jump targets.** `isManagedHost` treated a missing `metadata.managed` flag as permission, so any host the SSO merely *discovered* — an unpromoted Proxmox guest, a UniFi client — was offered in the TUI picker and accepted by the username grammar. The filter is now `isCatalogHost`, mirroring the SSO Directory's own rule: a resource carrying `discovery_sources` but never promoted is excluded, while hand-created hosts (no `discovery_sources`) and promoted ones (`managed: true`) are included, and an explicit `managed: false` is always excluded.
 - test: regression coverage for all five cases (hand-made, discovered-unpromoted, discovered-promoted, `manual` source, explicitly unmanaged).

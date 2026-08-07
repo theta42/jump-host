@@ -41,11 +41,13 @@ Every attempt — success or failure, with method and reason — is audited.
 ## 2. Access & target resolution
 
 The hosts a user may reach are computed from the directory, not a local list:
-
-1. The user's LDAP group memberships (`(&(objectClass=groupOfNames)(member=…))`).
-2. For each group, the SSO's
-   `GET /api/discovery/resources?group=<cn>` (authenticated with an API token),
-   unioned and filtered to `kind: host`.
+the jump host calls the SSO's `GET /api/discovery/access/:uid` (authenticated
+with an API token) once per user; the SSO evaluates the user's LDAP group
+memberships server-side and returns the full access projection in one
+response, already filtered to `kind: host`. (The jump host also has an
+admin-only `allHosts()` path, used for the unfiltered catalog listing, which
+does call `GET /api/discovery/resources?group=<cn>` per group — but that's
+not the per-user authorization path.)
 
 Each host's dial address is `metadata.ip` (or the hostname from
 `metadata.address`) and port `metadata.sshPort` (default 22). Results are cached
