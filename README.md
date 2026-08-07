@@ -37,9 +37,10 @@ bridged straight in.
    jump host's own injected key excluded) or password (LDAP bind; the
    `ssh.passwordAuth` policy can restrict passwords to local clients or disable
    them — keys-only is recommended for a public host).
-2. **Authorization** — the hosts you may reach are the union of your LDAP groups
-   × the SSO directory (`/api/discovery/resources?group=<cn>`). No directory
-   entry, no access.
+2. **Authorization** — the jump host calls the SSO Manager's
+   `GET /api/discovery/access/:uid` once per user; the SSO evaluates the
+   user's LDAP group memberships server-side and returns their full access
+   projection in one response. No directory entry, no access.
 3. **Key injection** — on first use the jump host appends its own public key to
    your `sshPublicKey` in LDAP (comment-marked), then connects downstream **as
    you** using its private key. Downstream hosts already serve keys from LDAP
