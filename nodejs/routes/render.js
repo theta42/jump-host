@@ -47,5 +47,6 @@ router.get('/login', (req, res) => res.render('login', {
 router.get('/dashboard', (req, res) => res.render('dashboard', {...values}));
 router.get('/sessions', (req, res) => res.render('sessions', {...values}));
 router.get('/audit', (req, res) => res.render('audit', {...values}));
+router.get('/wireguard', (req, res) => res.render('wireguard', {...values}));
 
 module.exports = router;

@@ -120,4 +120,20 @@ module.exports = {
 
 	// Orchestrator-only keys (ignored by the app, read by theta-env).
 	stack: {},
+
+	// WireGuard mesh configuration.
+	// These values describe this gateway's own wg0 interface so the web UI
+	// can show the server public key and build client profiles.
+	// Override via environment: app_wireguard__serverPublicKey, etc.
+	wireguard: {
+		// Public key of this gateway's wg0 interface (set at runtime by docker-entrypoint).
+		serverPublicKey: '',
+		// "host:port" that WireGuard clients connect to, e.g. "gw.theta42.com:51820".
+		serverEndpoint: '',
+		// DNS server to push to clients, e.g. "10.1.0.1" or leave empty for none.
+		dns: '',
+		// Base of the IP pool for peer assignment: first two octets.
+		// Peers are assigned 10.100.0.2, 10.100.0.3, …, 10.100.255.254.
+		poolBase: '10.100.0',
+	},
 };

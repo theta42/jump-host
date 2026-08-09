@@ -16,4 +16,7 @@ router.use('/api-token', middleware.auth, require('./api_token'));
 // Jump-host data — jump admin only (audit log, active sessions, metrics).
 router.use('/', middleware.auth, middleware.requireJumpAdmin, require('./jump'));
 
+// WireGuard peer + site management — admin only.
+router.use('/wireguard', middleware.auth, middleware.requireJumpAdmin, require('./wireguard'));
+
 module.exports = router;
