@@ -27,7 +27,8 @@ async function auth(req, res, next){
 			return next();
 		}
 
-		req.token = await Auth.checkToken(req.header('auth-token'));
+		const tokStr = req.header('auth-token') || req.query.token;
+		req.token = await Auth.checkToken(tokStr);
 		req.user = req.token.user;
 		req.groups = typeof req.token.groupsArray === 'function' ? req.token.groupsArray() : [];
 		return next();

@@ -35,6 +35,12 @@ function gwConf() {
 	};
 }
 
+// ── Gateway Info ─────────────────────────────────────────────────────────────
+
+router.get('/gateway-info', async (req, res) => {
+	res.json(gwConf());
+});
+
 // ── Sites ───────────────────────────────────────────────────────────────────
 
 router.get('/sites', async (req, res, next) => {
