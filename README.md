@@ -1,103 +1,47 @@
-# Theta42 Jump Host
+# Theta Gateway
 
-An SSH jump host for the [theta42](https://github.com/theta42) self-hosted
-stack. Users SSH into one public host and land on any downstream host they're
-entitled to — audited end to end.
+An SSH jump gateway and integrated WireGuard mesh network router for the [Theta Suite](https://github.com/theta42/theta-suite) ecosystem. Users SSH into one entry point (`:2222`) and reach target downstream hosts according to directory permissions, with full auditing end-to-end.
 
-Two backends, same SSH front door and audit trail: the default mode
-authenticates against the shared LDAP directory and authorizes from the
-[SSO Manager](https://github.com/theta42/sso-manager-node)'s inventory graph;
-**standalone mode** (below) runs with no LDAP or SSO at all, storing users and
-hosts in a local SQL database instead.
+Theta Gateway authenticates users against the shared OpenLDAP directory, authorizes access using **Theta Directory** (`theta-directory`), and routes cross-site mesh traffic with native WireGuard subnets and NETMAP shadow network support.
 
-## Two ways to connect
+## Access Flow
 
 **Direct (WinSCP/SFTP-friendly):**
 
-```
-ssh alice_-_web01@jump.example.com          # -> host slug 'web01' / 'host_web01'
+```bash
+ssh alice_-_web01@jump.example.com          # -> target host slug 'web01'
 sftp -P 2222 alice_-_web01@jump.example.com # SFTP passes through unchanged
 ```
 
-The username grammar is `{uid}_-_{target}`. `target` is a directory host slug
-(with or without the `host_` prefix), a bare hostname, or an IP.
+The username grammar is `{uid}_-_{target}`. `target` is a directory host slug or hostname.
 
-**Interactive picker:**
+**Interactive host picker:**
 
-```
+```bash
 ssh alice@jump.example.com
 ```
 
-Plain login shows a TUI list of the hosts you can reach; pick one and you're
-bridged straight in.
+Plain login displays a TUI list of target hosts assigned to the local site (`SITE_SLUG`) that the user is authorized to reach.
 
-## How it works
+## How it Works
 
-1. **Inbound auth** — LDAP. Public key (matched against your `sshPublicKey`, the
-   jump host's own injected key excluded) or password (LDAP bind; the
-   `ssh.passwordAuth` policy can restrict passwords to local clients or disable
-   them — keys-only is recommended for a public host).
-2. **Authorization** — the jump host calls the SSO Manager's
-   `GET /api/discovery/access/:uid` once per user; the SSO evaluates the
-   user's LDAP group memberships server-side and returns their full access
-   projection in one response. No directory entry, no access.
-3. **Key injection** — on first use the jump host appends its own public key to
-   your `sshPublicKey` in LDAP (comment-marked), then connects downstream **as
-   you** using its private key. Downstream hosts already serve keys from LDAP
-   via [ldap-client](https://github.com/theta42/ldap-client)'s
-   `AuthorizedKeysCommand`, so nothing downstream needs changing.
-4. **Bridge** — shell, exec, and the SFTP subsystem are spliced to the
-   downstream sshd. Every session is audited.
+1. **Inbound Auth** — OpenLDAP authentication via public key matching (`sshPublicKey`) or LDAP password bind.
+2. **Authorization** — Calls Theta Directory's access API (`GET /api/discovery/access/:uid`) to evaluate LDAP group memberships and site-filtered host entitlement.
+3. **Key Injection** — Appends its gateway public key to user `sshPublicKey` in LDAP and connects downstream as the user.
+4. **Bridge & Audit** — Slices shell/SFTP subsystem to downstream sshd with session audit logging.
 
-## Standalone mode
+## Deployment
 
-Run without LDAP or the SSO Manager at all. Set `standalone.enabled: true` and
-the jump host stores users and hosts itself, via
-[@simpleworkjs/orm](https://www.npmjs.com/package/@simpleworkjs/orm)
-(Sequelize under the hood — defaults to a local SQLite file, but any
-Sequelize-supported dialect works via `conf.orm`):
+Theta Gateway is deployed exclusively via Docker Compose as an integrated service within **Theta Suite**:
 
-```js
-standalone: { enabled: true },
-orm: { dialect: 'sqlite', storage: './data/standalone.sqlite', logging: false },
+```bash
+git clone --recursive https://github.com/theta42/theta-suite.git
+cd theta-suite
+cp setup.env.example setup.env   # set CFG_DOMAIN to your domain
+./setup.sh                       # generates config, builds, and starts Theta Suite
 ```
 
-Everything else — the SSH front door, key injection, bridging, the web UI and
-audit trail — is unchanged; only where users/hosts live and how passwords are
-checked differs. There's no admin UI for standalone users/hosts yet — add them
-with the ORM models directly:
-
-```js
-const StandaloneUser = require('./models/standalone_user');
-const StandaloneHost = require('./models/standalone_host');
-const bcrypt = require('bcrypt');
-
-await StandaloneUser.create({
-  uid: 'alice',
-  passwordHash: await bcrypt.hash('a real password', 10),
-  sshPublicKeys: ['ssh-ed25519 AAAA... alice@laptop'],
-  groups: [],
-});
-
-await StandaloneHost.create({
-  slug: 'host_web01',
-  displayName: 'web01',
-  kind: 'host',
-  metadata: { ip: '10.0.0.5', sshPort: 22 },
-});
-```
-
-In standalone mode every stored host is reachable by every stored user — there
-is no group-based authorization (the `groups` field on `StandaloneUser` is
-accepted for interface parity but not yet enforced).
-
-## Requirements
-
-*(default LDAP + SSO mode — see [Standalone mode](#standalone-mode) to skip
-all of this)*
-
-- The SSO Manager (OpenLDAP directory + `/api/discovery`).
-- Downstream hosts joined via ldap-client (SSSD + `AuthorizedKeysCommand`).
+See the main [Theta Suite README](https://github.com/theta42/theta-suite) for full details on multi-site configuration, WireGuard mesh routing, and network setup.
 - An LDAP bind account with **write access to the `sshPublicKey` attribute** on
   user entries (see the ACL note in `secrets.js.example`).
 - An SSO API token (`sso_…`) for the directory queries.
