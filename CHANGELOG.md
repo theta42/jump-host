@@ -1,3 +1,6 @@
+## v2.0.1
+- docs: **Rebranded to Theta Gateway across the docs.** README title/links updated; removed the "Standalone Docker" and "Bare metal" install paths, which contradicted the Deployment section's own "exclusively via Docker Compose within Theta Suite" claim. Fixed stale links to the old per-repo GitHub Pages sites (`sso-manager-node`, `theta-env`) — now point at the unified `theta42.github.io/theta-suite/` docs site.
+
 ## v2.0.0
 - feat: **WireGuard Gateway Management UI & API.** Integrated complete WireGuard exit node management (`/wireguard`), client peer creation with instant QR code rendering and `.conf` configuration file downloads.
 - feat: **Automatic WireGuard Bootstrap.** Automatically generates an X25519 gateway keypair on initial boot if missing and registers the local default exit node (`718it (This Site)`).

@@ -4,6 +4,8 @@ An SSH jump gateway and integrated WireGuard mesh network router for the [Theta 
 
 Theta Gateway authenticates users against the shared OpenLDAP directory, authorizes access using **Theta Directory** (`theta-directory`), and routes cross-site mesh traffic with native WireGuard subnets and NETMAP shadow network support.
 
+**Documentation:** [https://theta42.github.io/theta-suite/jump-host/](https://theta42.github.io/theta-suite/jump-host/)
+
 ## Access Flow
 
 **Direct (WinSCP/SFTP-friendly):**
@@ -32,7 +34,7 @@ Plain login displays a TUI list of target hosts assigned to the local site (`SIT
 
 ## Deployment
 
-Theta Gateway is deployed exclusively via Docker Compose as an integrated service within **Theta Suite**:
+Theta Gateway is deployed exclusively via Docker Compose as an integrated service within **Theta Suite** — it is not installed or run on its own:
 
 ```bash
 git clone --recursive https://github.com/theta42/theta-suite.git
@@ -41,35 +43,12 @@ cp setup.env.example setup.env   # set CFG_DOMAIN to your domain
 ./setup.sh                       # generates config, builds, and starts Theta Suite
 ```
 
+Enable it via `CFG_JUMP_HOST_ENABLED=true` in `setup.env` and re-run
+`./setup.sh`. The stack wires the LDAP bind account (write access to the
+`sshPublicKey` attribute), the write-ACL, the SSO API token, and a directory
+entry automatically.
+
 See the main [Theta Suite README](https://github.com/theta42/theta-suite) for full details on multi-site configuration, WireGuard mesh routing, and network setup.
-- An LDAP bind account with **write access to the `sshPublicKey` attribute** on
-  user entries (see the ACL note in `secrets.js.example`).
-- An SSO API token (`sso_…`) for the directory queries.
-
-## Install
-
-### Unified theta-env stack (recommended)
-
-Enable it in `theta-env/setup.env` (`CFG_JUMP_HOST_ENABLED=true`) and re-run
-`./setup.sh`. The stack wires the LDAP bind account, the write-ACL, the API
-token, and a directory entry automatically.
-
-### Standalone Docker
-
-```
-cp secrets.js.example config/jump-secrets.js   # then edit it
-docker compose up -d --build
-```
-
-### Bare metal
-
-```
-curl -fsSL https://raw.githubusercontent.com/theta42/jump-host/master/ops/install.sh | sudo bash
-sudo $EDITOR /etc/jump-host/secrets.js         # fill in LDAP + SSO
-sudo systemctl restart jump-host
-```
-
-Installs to `/opt/theta42/jump-host`; idempotent (re-run to update).
 
 ## Ports
 
@@ -86,8 +65,8 @@ The default SSH port is **2222** so the service needs no privilege. To listen on
 ## Web UI / API
 
 `https://jump.example.com/` (behind the proxy) — built on the same
-Express + EJS + Bootstrap stack as the [SSO Manager](https://theta42.github.io/sso-manager-node/)
-and [Proxy](https://theta42.github.io/proxy/), so it looks and behaves like the
+Express + EJS + Bootstrap stack as [Theta Directory](https://theta42.github.io/theta-suite/sso/)
+and [Theta Proxy](https://theta42.github.io/theta-suite/proxy/), so it looks and behaves like the
 rest of the stack. Login is **OIDC against the SSO** (the "Log in with SSO"
 button) plus a **local anti-lockout admin** that works even if the SSO is
 unreachable. Admin access requires membership in `auth.adminGroups` (default
@@ -118,7 +97,7 @@ OpenBao with the scoped `VAULT_TOKEN` (env, policy `jump-host` — read only
 The `config/jump-secrets.js` file is an operator-edit seed artifact
 (gitignored); the bootstrap writes the generated API token + OAuth client
 into OpenBao, which is authoritative. For the full architecture see
-theta-env's **[Secrets docs](https://theta42.github.io/theta-env/secrets/)**.
+theta-suite's **[Secrets docs](https://theta42.github.io/theta-suite/secrets.html)**.
 
 ## Development
 
