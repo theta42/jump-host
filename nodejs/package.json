@@ -14,7 +14,7 @@
   "scripts": {
     "start": "node ./bin/www",
     "dev": "npx nodemon --ignore public/ ./bin/www",
-    "test": "NODE_ENV=test node --test --test-force-exit test/unit/access.test.js test/unit/host_keys.test.js test/unit/no_native_dialogs.test.js test/unit/target_match.test.js test/unit/username_grammar.test.js",
+    "test": "NODE_ENV=test node --test --test-force-exit test/unit/access.test.js test/unit/host_keys.test.js test/unit/no_native_dialogs.test.js test/unit/target_match.test.js test/unit/username_grammar.test.js test/unit/wireguard.test.js",
     "test:unit": "NODE_ENV=test node --test --test-force-exit test/unit/*.test.js",
     "test:integration": "NODE_ENV=test node --test --test-force-exit test/integration/*.test.js"
   },

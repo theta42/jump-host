@@ -15,8 +15,10 @@ const { Server } = require('socket.io');
 // createOidcClient), so the fetch MUST resolve before require('../models').
 // Fail-soft: if OpenBao is unreachable, init() leaves conf as the file-loaded
 // fallback and boot continues from ./config/jump-secrets.js.
-require('@simpleworkjs/bao-conf').init({ path: 'jump-host', conf }).then(() => {
+require('@simpleworkjs/bao-conf').init({ path: 'jump-host', conf }).then(async () => {
 	require('../models');
+	const { bootstrapWireguard } = require('../services/wg_bootstrap');
+	await bootstrapWireguard();
 
 	const app = require('../app');
 	const middleware = require('../middleware/auth');
