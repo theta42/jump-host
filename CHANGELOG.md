@@ -1,3 +1,9 @@
+## v2.0.0
+- feat: **WireGuard Gateway Management UI & API.** Integrated complete WireGuard exit node management (`/wireguard`), client peer creation with instant QR code rendering and `.conf` configuration file downloads.
+- feat: **Automatic WireGuard Bootstrap.** Automatically generates an X25519 gateway keypair on initial boot if missing and registers the local default exit node (`718it (This Site)`).
+- feat: **Query Token Authentication.** Added `?token=` parameter fallback to `middleware/auth.js` for direct browser `.conf` profile file downloads.
+- fix: **UI Confirm Banners.** Added `actionMessage` container placeholders to cards for `app.messages.confirm()` rendering.
+
 ## v1.19.1
 - docs: README.md and docs/architecture.md described host-access authorization as a client-side loop over each of a user's LDAP groups (`GET /api/discovery/resources?group=<cn>` per group). The actual code (`utils/access.js`, `accessibleHosts()`) makes one call to the SSO's `GET /api/discovery/access/:uid`, which resolves the user's groups server-side. Corrected both.
 
