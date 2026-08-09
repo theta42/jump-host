@@ -572,12 +572,13 @@ function submitSite() {
   });
 }
 
-function deleteSite(id) {
+async function deleteSite(id) {
   var site = wgSites.find(function(s){ return s.id === id; });
   if (!site) return;
-  if (!confirm('Remove exit node "' + site.name + '"? Any peers using it will fall back to full tunnel.')) return;
+  var ok = await app.messages.confirm('Remove exit node "' + site.name + '"? Any peers using it will fall back to full tunnel.', '#sites-table-wrap', 'danger');
+  if (!ok) return;
   api('DELETE', '/sites/' + id, null, function(err){
-    if (err) return alert('Error: ' + err);
+    if (err) return app.messages.action('Error: ' + err, '#sites-table-wrap', 'danger');
     loadSites(function(){ loadPeers(); });
   });
 }
@@ -632,12 +633,13 @@ function savePeerEdit() {
   });
 }
 
-function deletePeer(id) {
+async function deletePeer(id) {
   var peer = wgPeers.find(function(p){ return p.id === id; });
   if (!peer) return;
-  if (!confirm('Remove peer "' + peer.name + '"? Their VPN access will be revoked immediately.')) return;
+  var ok = await app.messages.confirm('Remove peer "' + peer.name + '"? Their VPN access will be revoked immediately.', '#peers-table-wrap', 'danger');
+  if (!ok) return;
   api('DELETE', '/peers/' + id, null, function(err){
-    if (err) return alert('Error: ' + err);
+    if (err) return app.messages.action('Error: ' + err, '#peers-table-wrap', 'danger');
     loadPeers();
   });
 }
