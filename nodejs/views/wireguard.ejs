@@ -1,0 +1,678 @@
+<%- include('top') %>
+
+<style>
+/* ── WireGuard Page Styles ──────────────────────────────────────────────── */
+:root {
+  --wg-green:  #22c55e;
+  --wg-purple: #7c3aed;
+  --wg-blue:   #3b82f6;
+  --wg-dark:   #0f172a;
+  --wg-card:   #1e293b;
+  --wg-border: rgba(255,255,255,.08);
+}
+
+#wg-shell {
+  background: linear-gradient(135deg, #0f172a 0%, #1a1035 100%);
+  min-height: calc(100vh - 56px);
+  padding: 2rem 1.5rem;
+}
+
+/* ── Hero header ────────────────────────────────────────────────────────── */
+.wg-hero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.wg-hero-icon {
+  width: 52px; height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--wg-purple), var(--wg-blue));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem; color: #fff;
+  box-shadow: 0 0 24px rgba(124,58,237,.4);
+}
+.wg-hero h1 { font-size: 1.7rem; font-weight: 700; color: #f1f5f9; margin: 0; }
+.wg-hero p  { color: #94a3b8; font-size: .9rem; margin: 0; }
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+.wg-card {
+  background: var(--wg-card);
+  border: 1px solid var(--wg-border);
+  border-radius: 16px;
+  padding: 1.4rem 1.6rem;
+  margin-bottom: 1.8rem;
+}
+.wg-card-title {
+  font-size: 1rem; font-weight: 600; color: #e2e8f0;
+  display: flex; align-items: center; gap: .5rem;
+  margin-bottom: 1.1rem;
+}
+.wg-card-title i { color: var(--wg-blue); }
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+.wg-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.wg-table th {
+  color: #64748b; font-weight: 600; font-size: .75rem; text-transform: uppercase;
+  letter-spacing: .05em; padding: .5rem .8rem; border-bottom: 1px solid var(--wg-border);
+}
+.wg-table td {
+  padding: .65rem .8rem; color: #cbd5e1;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  vertical-align: middle;
+}
+.wg-table tr:last-child td { border-bottom: none; }
+.wg-table tr:hover td { background: rgba(255,255,255,.03); }
+
+/* ── Badges ─────────────────────────────────────────────────────────────── */
+.wg-badge {
+  display: inline-block; padding: .2rem .6rem; border-radius: 6px;
+  font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+}
+.wg-badge-exit  { background: rgba(124,58,237,.2); color: #a78bfa; border: 1px solid rgba(124,58,237,.3); }
+.wg-badge-full  { background: rgba(34,197,94,.15); color: #4ade80; border: 1px solid rgba(34,197,94,.25); }
+.wg-badge-split { background: rgba(59,130,246,.15); color: #60a5fa; border: 1px solid rgba(59,130,246,.25); }
+
+/* ── Monospace key display ──────────────────────────────────────────────── */
+.wg-key {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: .74rem; color: #7dd3fc;
+  background: rgba(14,165,233,.08); padding: .15rem .5rem;
+  border-radius: 5px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 180px; display: inline-block;
+}
+
+/* ── Action buttons ─────────────────────────────────────────────────────── */
+.wg-btn {
+  border: none; border-radius: 8px; padding: .35rem .75rem;
+  font-size: .8rem; font-weight: 500; cursor: pointer;
+  display: inline-flex; align-items: center; gap: .35rem;
+  transition: all .15s;
+}
+.wg-btn-primary { background: var(--wg-purple); color: #fff; }
+.wg-btn-primary:hover { background: #6d28d9; transform: translateY(-1px); }
+.wg-btn-secondary { background: rgba(255,255,255,.07); color: #94a3b8; }
+.wg-btn-secondary:hover { background: rgba(255,255,255,.12); color: #e2e8f0; }
+.wg-btn-danger  { background: rgba(239,68,68,.15); color: #f87171; border: 1px solid rgba(239,68,68,.25); }
+.wg-btn-danger:hover  { background: rgba(239,68,68,.25); }
+.wg-btn-qr  { background: rgba(34,197,94,.15); color: #4ade80; border: 1px solid rgba(34,197,94,.2); }
+.wg-btn-qr:hover  { background: rgba(34,197,94,.25); }
+.wg-btn-conf { background: rgba(59,130,246,.15); color: #60a5fa; border: 1px solid rgba(59,130,246,.2); }
+.wg-btn-conf:hover { background: rgba(59,130,246,.25); }
+
+/* ── Gateway info strip ──────────────────────────────────────────────────── */
+.wg-gw-info {
+  display: flex; flex-wrap: wrap; gap: 1rem;
+  background: rgba(124,58,237,.07); border: 1px solid rgba(124,58,237,.2);
+  border-radius: 12px; padding: 1rem 1.3rem; margin-bottom: 1.8rem;
+}
+.wg-gw-info-item { display: flex; flex-direction: column; gap: .15rem; }
+.wg-gw-info-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: #7c3aed; }
+.wg-gw-info-value { font-family: monospace; font-size: .82rem; color: #e2e8f0; }
+.wg-gw-info-value.empty { color: #475569; font-style: italic; }
+
+/* ── QR modal ───────────────────────────────────────────────────────────── */
+#wg-qr-img {
+  display: block; margin: 1rem auto; max-width: 320px; width: 100%;
+  border-radius: 12px; border: 3px solid rgba(255,255,255,.08);
+  background: #fff; padding: 8px;
+}
+.wg-qr-instructions {
+  background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.2);
+  border-radius: 8px; padding: .75rem 1rem; margin-top: 1rem;
+  font-size: .82rem; color: #86efac;
+}
+
+/* ── Empty states ───────────────────────────────────────────────────────── */
+.wg-empty {
+  text-align: center; padding: 2.5rem; color: #475569;
+}
+.wg-empty i { font-size: 2rem; margin-bottom: .5rem; display: block; }
+
+/* ── Form styles inside modal ───────────────────────────────────────────── */
+.wg-modal-body .form-label { color: #94a3b8; font-size: .85rem; }
+.wg-modal-body .form-control, .wg-modal-body .form-select {
+  background: #0f172a; border: 1px solid rgba(255,255,255,.1); color: #e2e8f0;
+}
+.wg-modal-body .form-control:focus, .wg-modal-body .form-select:focus {
+  background: #0f172a; border-color: var(--wg-purple); color: #e2e8f0;
+  box-shadow: 0 0 0 3px rgba(124,58,237,.2);
+}
+.wg-modal-body .form-control::placeholder { color: #475569; }
+.wg-modal-body .form-check-input:checked { background-color: var(--wg-purple); border-color: var(--wg-purple); }
+
+/* ── Divider label ──────────────────────────────────────────────────────── */
+.wg-section-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 1rem;
+}
+.wg-section-header h2 {
+  font-size: 1rem; font-weight: 600; color: #e2e8f0;
+  display: flex; align-items: center; gap: .5rem; margin: 0;
+}
+</style>
+
+<div id="wg-shell">
+
+  <!-- Hero -->
+  <div class="wg-hero">
+    <div class="wg-hero-icon"><i class="fa-solid fa-shield-halved"></i></div>
+    <div>
+      <h1>WireGuard Mesh</h1>
+      <p>Manage client profiles, exit nodes, and VPN tunnels</p>
+    </div>
+  </div>
+
+  <!-- Gateway Info Strip -->
+  <div class="wg-gw-info" id="wg-gw-info">
+    <div class="wg-gw-info-item">
+      <span class="wg-gw-info-label"><i class="fa-solid fa-server me-1"></i>Gateway Endpoint</span>
+      <span class="wg-gw-info-value empty" id="gw-endpoint">loading…</span>
+    </div>
+    <div class="wg-gw-info-item">
+      <span class="wg-gw-info-label"><i class="fa-solid fa-key me-1"></i>Server Public Key</span>
+      <span class="wg-gw-info-value empty" id="gw-pubkey">loading…</span>
+    </div>
+    <div class="wg-gw-info-item">
+      <span class="wg-gw-info-label"><i class="fa-solid fa-circle-info me-1"></i>DNS Pushed to Clients</span>
+      <span class="wg-gw-info-value empty" id="gw-dns">loading…</span>
+    </div>
+  </div>
+
+  <div class="row">
+
+    <!-- ── Left column: Exit Sites ───────────────────────────────────────── -->
+    <div class="col-lg-5 mb-3">
+      <div class="wg-card">
+        <div class="wg-section-header">
+          <h2><i class="fa-solid fa-globe"></i> Exit Nodes</h2>
+          <button class="wg-btn wg-btn-primary" onclick="openAddSiteModal()">
+            <i class="fa-solid fa-plus"></i> Add Site
+          </button>
+        </div>
+
+        <div id="sites-table-wrap">
+          <div class="wg-empty"><i class="fa-solid fa-globe"></i>No exit nodes yet</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Right column: Peers ───────────────────────────────────────────── -->
+    <div class="col-lg-7 mb-3">
+      <div class="wg-card">
+        <div class="wg-section-header">
+          <h2><i class="fa-solid fa-laptop"></i> Client Peers</h2>
+          <button class="wg-btn wg-btn-primary" onclick="openAddPeerModal()">
+            <i class="fa-solid fa-plus"></i> New Client
+          </button>
+        </div>
+
+        <div id="peers-table-wrap">
+          <div class="wg-empty"><i class="fa-solid fa-laptop"></i>No peers yet</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /row -->
+
+</div><!-- /wg-shell -->
+
+<!-- ── QR Code Modal ────────────────────────────────────────────────────── -->
+<div class="modal fade" id="wg-qr-modal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content bg-dark border border-secondary">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title text-light">
+          <i class="fa-solid fa-qrcode me-2"></i>
+          <span id="wg-qr-title">WireGuard QR Code</span>
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div id="wg-qr-loading" class="py-4">
+          <div class="spinner-border text-primary" role="status"></div>
+          <div class="text-muted mt-2 small">Generating…</div>
+        </div>
+        <img id="wg-qr-img" src="" alt="WireGuard QR Code" style="display:none;">
+        <div class="wg-qr-instructions" style="text-align:left;">
+          <i class="fa-brands fa-apple me-1"></i><i class="fa-brands fa-android me-1"></i>
+          Open the <strong>WireGuard</strong> app → tap <strong>+</strong> → <strong>Scan QR Code</strong>
+        </div>
+        <div class="mt-3 d-flex gap-2 justify-content-center flex-wrap">
+          <button class="wg-btn wg-btn-conf" id="wg-download-conf-btn">
+            <i class="fa-solid fa-download"></i> Download .conf
+          </button>
+          <button class="wg-btn wg-btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add/Edit Site Modal ───────────────────────────────────────────────── -->
+<div class="modal fade" id="wg-site-modal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content bg-dark border border-secondary">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title text-light" id="wg-site-modal-title">
+          <i class="fa-solid fa-globe me-2"></i>Add Exit Node
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body wg-modal-body">
+        <input type="hidden" id="site-edit-id">
+        <div class="mb-3">
+          <label class="form-label">Name <span class="text-danger">*</span></label>
+          <input class="form-control" id="site-name" placeholder="e.g. Netherlands (10.5)">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Endpoint <span class="text-danger">*</span></label>
+          <input class="form-control" id="site-endpoint" placeholder="nl.theta42.com:51820">
+          <div class="form-text text-muted">Public host:port clients connect to</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Site Public Key <span class="text-danger">*</span></label>
+          <input class="form-control font-monospace" id="site-pubkey" placeholder="Base64 WireGuard public key">
+        </div>
+        <div class="row">
+          <div class="col-8 mb-3">
+            <label class="form-label">Routable Subnet</label>
+            <input class="form-control" id="site-subnet" placeholder="10.5.0.0/16">
+            <div class="form-text text-muted">IP range this site routes</div>
+          </div>
+          <div class="col-4 mb-3">
+            <label class="form-label">Site ID</label>
+            <input class="form-control" id="site-siteid" placeholder="5">
+          </div>
+        </div>
+        <div class="mb-3 form-check">
+          <input type="checkbox" class="form-check-input" id="site-exitall">
+          <label class="form-check-label text-secondary" for="site-exitall">
+            Full tunnel exit (AllowedIPs = 0.0.0.0/0)
+          </label>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Note</label>
+          <input class="form-control" id="site-note" placeholder="Optional description">
+        </div>
+        <div class="actionMessage" id="site-modal-msg" style="display:none;"></div>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button class="wg-btn wg-btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="wg-btn wg-btn-primary" onclick="submitSite()">
+          <i class="fa-solid fa-save me-1"></i><span id="site-submit-label">Add Exit Node</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add Peer Modal ────────────────────────────────────────────────────── -->
+<div class="modal fade" id="wg-peer-modal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content bg-dark border border-secondary">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title text-light">
+          <i class="fa-solid fa-laptop me-2"></i>New WireGuard Client
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body wg-modal-body">
+        <div class="mb-3">
+          <label class="form-label">Device Name <span class="text-danger">*</span></label>
+          <input class="form-control" id="peer-name" placeholder="e.g. william-iphone">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Exit Node</label>
+          <select class="form-select" id="peer-exit">
+            <option value="">— Full tunnel via gateway (default) —</option>
+          </select>
+          <div class="form-text text-muted">Where this client's traffic exits the mesh</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Note</label>
+          <input class="form-control" id="peer-note" placeholder="Optional description">
+        </div>
+        <div class="actionMessage" id="peer-modal-msg" style="display:none;"></div>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button class="wg-btn wg-btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="wg-btn wg-btn-primary" onclick="submitPeer()">
+          <i class="fa-solid fa-key me-1"></i>Generate Profile
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edit Peer Exit Modal ──────────────────────────────────────────────── -->
+<div class="modal fade" id="wg-peer-edit-modal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content bg-dark border border-secondary">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title text-light">
+          <i class="fa-solid fa-route me-2"></i>Edit Client Profile
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body wg-modal-body">
+        <input type="hidden" id="peer-edit-id">
+        <div class="mb-3">
+          <label class="form-label">Device Name</label>
+          <input class="form-control" id="peer-edit-name">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Exit Node</label>
+          <select class="form-select" id="peer-edit-exit">
+            <option value="">— Full tunnel via gateway (default) —</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Note</label>
+          <input class="form-control" id="peer-edit-note">
+        </div>
+        <div class="actionMessage" id="peer-edit-msg" style="display:none;"></div>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button class="wg-btn wg-btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="wg-btn wg-btn-primary" onclick="savePeerEdit()">
+          <i class="fa-solid fa-save me-1"></i>Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ── State ──────────────────────────────────────────────────────────────── */
+var wgSites = [];
+var wgPeers = [];
+var currentQrPeerId = null;
+
+/* ── Bootstrap modal handles ────────────────────────────────────────────── */
+var qrModal, siteModal, peerModal, peerEditModal;
+$(document).ready(function(){
+  qrModal      = new bootstrap.Modal(document.getElementById('wg-qr-modal'));
+  siteModal    = new bootstrap.Modal(document.getElementById('wg-site-modal'));
+  peerModal    = new bootstrap.Modal(document.getElementById('wg-peer-modal'));
+  peerEditModal = new bootstrap.Modal(document.getElementById('wg-peer-edit-modal'));
+  loadAll();
+});
+
+/* ── API helpers ────────────────────────────────────────────────────────── */
+function api(method, path, body, cb) {
+  var opts = {
+    method: method,
+    headers: { 'Content-Type': 'application/json' },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  fetch('/api/wireguard' + path, opts)
+    .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, d: d}; }); })
+    .then(function(r){ cb(r.ok ? null : (r.d.message || 'Error'), r.d); })
+    .catch(function(e){ cb(e.message); });
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Load everything ────────────────────────────────────────────────────── */
+function loadAll() {
+  api('GET', '/gateway-info', null, function(err, info){
+    if (!err && info) {
+      var ep = info.endpoint || ''; var pk = info.publicKey || ''; var dns = info.dns || '';
+      $('#gw-endpoint').text(ep || '(not configured)').toggleClass('empty', !ep);
+      $('#gw-pubkey').text(pk || '(not configured)').toggleClass('empty', !pk);
+      $('#gw-dns').text(dns || '(not configured)').toggleClass('empty', !dns);
+    }
+  });
+  loadSites(function(){ loadPeers(); });
+}
+
+function loadSites(cb) {
+  api('GET', '/sites', null, function(err, data){
+    wgSites = (!err && data && data.results) || [];
+    renderSitesTable();
+    if (cb) cb();
+  });
+}
+
+function loadPeers() {
+  api('GET', '/peers', null, function(err, data){
+    wgPeers = (!err && data && data.results) || [];
+    renderPeersTable();
+  });
+}
+
+/* ── Render helpers ─────────────────────────────────────────────────────── */
+function siteLabel(exitSiteId) {
+  if (!exitSiteId) return '<span class="wg-badge wg-badge-full">Full Tunnel</span>';
+  var site = wgSites.find(function(s){ return s.id === exitSiteId; });
+  return site
+    ? '<span class="wg-badge wg-badge-exit"><i class="fa-solid fa-location-dot me-1"></i>' + esc(site.name) + '</span>'
+    : '<span class="wg-badge wg-badge-split">Unknown</span>';
+}
+
+function renderSitesTable() {
+  var $w = $('#sites-table-wrap');
+  if (!wgSites.length) {
+    $w.html('<div class="wg-empty"><i class="fa-solid fa-globe"></i>No exit nodes yet.<br><span class="small">Add a site to give clients a routable exit point.</span></div>');
+    return;
+  }
+  var html = '<table class="wg-table"><thead><tr>'
+    + '<th>Name</th><th>Endpoint</th><th>Subnet</th><th class="text-end">Actions</th>'
+    + '</tr></thead><tbody>';
+  wgSites.forEach(function(s){
+    var exitBadge = s.exitAll
+      ? '<span class="wg-badge wg-badge-full">Full Exit</span>'
+      : '<span class="wg-badge wg-badge-split">Split</span>';
+    html += '<tr>'
+      + '<td><strong class="text-light">' + esc(s.name) + '</strong><br><span class="text-muted small">' + (s.siteId ? 'Site ' + esc(s.siteId) : '') + '</span></td>'
+      + '<td><code class="small text-info">' + esc(s.endpoint) + '</code></td>'
+      + '<td><code class="small">' + esc(s.subnet || '—') + '</code> ' + exitBadge + '</td>'
+      + '<td class="text-end">'
+      + '<button class="wg-btn wg-btn-secondary me-1" onclick="openEditSiteModal(\'' + esc(s.id) + '\')" title="Edit"><i class="fa-solid fa-pen"></i></button>'
+      + '<button class="wg-btn wg-btn-danger" onclick="deleteSite(\'' + esc(s.id) + '\')" title="Remove"><i class="fa-solid fa-trash"></i></button>'
+      + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  $w.html(html);
+}
+
+function renderPeersTable() {
+  var $w = $('#peers-table-wrap');
+  if (!wgPeers.length) {
+    $w.html('<div class="wg-empty"><i class="fa-solid fa-laptop"></i>No client peers yet.<br><span class="small">Create a profile to get a QR code or .conf file.</span></div>');
+    return;
+  }
+  var html = '<table class="wg-table"><thead><tr>'
+    + '<th>Device</th><th>IP</th><th>Exit</th><th>Public Key</th><th class="text-end">Actions</th>'
+    + '</tr></thead><tbody>';
+  wgPeers.forEach(function(p){
+    html += '<tr>'
+      + '<td><strong class="text-light">' + esc(p.name) + '</strong>'
+      + (p.note ? '<br><span class="text-muted small">' + esc(p.note) + '</span>' : '')
+      + '</td>'
+      + '<td><code class="small text-success">' + esc(p.assignedIP) + '</code></td>'
+      + '<td>' + siteLabel(p.exitSiteId) + '</td>'
+      + '<td><span class="wg-key" title="' + esc(p.publicKey) + '">' + esc(p.publicKey) + '</span></td>'
+      + '<td class="text-end" style="white-space:nowrap;">'
+      + '<button class="wg-btn wg-btn-qr me-1" onclick="showQr(\'' + esc(p.id) + '\',\'' + esc(p.name) + '\')" title="QR Code"><i class="fa-solid fa-qrcode"></i></button>'
+      + '<button class="wg-btn wg-btn-conf me-1" onclick="downloadConf(\'' + esc(p.id) + '\')" title="Download .conf"><i class="fa-solid fa-download"></i></button>'
+      + '<button class="wg-btn wg-btn-secondary me-1" onclick="openEditPeerModal(\'' + esc(p.id) + '\')" title="Edit"><i class="fa-solid fa-pen"></i></button>'
+      + '<button class="wg-btn wg-btn-danger" onclick="deletePeer(\'' + esc(p.id) + '\')" title="Remove"><i class="fa-solid fa-trash"></i></button>'
+      + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  $w.html(html);
+}
+
+/* ── Exit node select population ────────────────────────────────────────── */
+function populateExitSelect(selectId, selectedId) {
+  var $sel = $('#' + selectId).empty();
+  $sel.append('<option value="">— Full tunnel via gateway (default) —</option>');
+  wgSites.forEach(function(s){
+    var opt = $('<option>').val(s.id).text(s.name + (s.endpoint ? ' (' + s.endpoint + ')' : ''));
+    if (s.id === selectedId) opt.prop('selected', true);
+    $sel.append(opt);
+  });
+}
+
+/* ── Sites ──────────────────────────────────────────────────────────────── */
+function openAddSiteModal() {
+  $('#site-edit-id').val('');
+  $('#site-name, #site-endpoint, #site-pubkey, #site-subnet, #site-siteid, #site-note').val('');
+  $('#site-exitall').prop('checked', false);
+  $('#wg-site-modal-title').html('<i class="fa-solid fa-globe me-2"></i>Add Exit Node');
+  $('#site-submit-label').text('Add Exit Node');
+  $('#site-modal-msg').hide();
+  siteModal.show();
+  setTimeout(function(){ $('#site-name').focus(); }, 300);
+}
+
+function openEditSiteModal(id) {
+  var site = wgSites.find(function(s){ return s.id === id; });
+  if (!site) return;
+  $('#site-edit-id').val(site.id);
+  $('#site-name').val(site.name);
+  $('#site-endpoint').val(site.endpoint);
+  $('#site-pubkey').val(site.publicKey);
+  $('#site-subnet').val(site.subnet);
+  $('#site-siteid').val(site.siteId);
+  $('#site-note').val(site.note);
+  $('#site-exitall').prop('checked', !!site.exitAll);
+  $('#wg-site-modal-title').html('<i class="fa-solid fa-pen me-2"></i>Edit Exit Node');
+  $('#site-submit-label').text('Save Changes');
+  $('#site-modal-msg').hide();
+  siteModal.show();
+}
+
+function submitSite() {
+  var id = $('#site-edit-id').val();
+  var payload = {
+    name: $('#site-name').val().trim(),
+    endpoint: $('#site-endpoint').val().trim(),
+    publicKey: $('#site-pubkey').val().trim(),
+    subnet: $('#site-subnet').val().trim() || '0.0.0.0/0',
+    siteId: $('#site-siteid').val().trim(),
+    note: $('#site-note').val().trim(),
+    exitAll: $('#site-exitall').is(':checked'),
+  };
+  if (!payload.name || !payload.endpoint || !payload.publicKey) {
+    return showMsg('#site-modal-msg', 'Name, endpoint, and public key are required.', 'danger');
+  }
+  var method = id ? 'PATCH' : 'POST';
+  var path   = id ? '/sites/' + id : '/sites';
+  api(method, path, payload, function(err){
+    if (err) return showMsg('#site-modal-msg', err, 'danger');
+    siteModal.hide();
+    loadSites(function(){ loadPeers(); });
+  });
+}
+
+function deleteSite(id) {
+  var site = wgSites.find(function(s){ return s.id === id; });
+  if (!site) return;
+  if (!confirm('Remove exit node "' + site.name + '"? Any peers using it will fall back to full tunnel.')) return;
+  api('DELETE', '/sites/' + id, null, function(err){
+    if (err) return alert('Error: ' + err);
+    loadSites(function(){ loadPeers(); });
+  });
+}
+
+/* ── Peers ──────────────────────────────────────────────────────────────── */
+function openAddPeerModal() {
+  $('#peer-name, #peer-note').val('');
+  populateExitSelect('peer-exit', '');
+  $('#peer-modal-msg').hide();
+  peerModal.show();
+  setTimeout(function(){ $('#peer-name').focus(); }, 300);
+}
+
+function submitPeer() {
+  var payload = {
+    name: $('#peer-name').val().trim(),
+    exitSiteId: $('#peer-exit').val(),
+    note: $('#peer-note').val().trim(),
+  };
+  if (!payload.name) return showMsg('#peer-modal-msg', 'Device name is required.', 'danger');
+  api('POST', '/peers', payload, function(err, peer){
+    if (err) return showMsg('#peer-modal-msg', err, 'danger');
+    peerModal.hide();
+    loadPeers();
+    // Auto-open the QR for the new peer
+    showQr(peer.id, peer.name);
+  });
+}
+
+function openEditPeerModal(id) {
+  var peer = wgPeers.find(function(p){ return p.id === id; });
+  if (!peer) return;
+  $('#peer-edit-id').val(peer.id);
+  $('#peer-edit-name').val(peer.name);
+  $('#peer-edit-note').val(peer.note || '');
+  populateExitSelect('peer-edit-exit', peer.exitSiteId);
+  $('#peer-edit-msg').hide();
+  peerEditModal.show();
+}
+
+function savePeerEdit() {
+  var id = $('#peer-edit-id').val();
+  var payload = {
+    name: $('#peer-edit-name').val().trim(),
+    exitSiteId: $('#peer-edit-exit').val(),
+    note: $('#peer-edit-note').val().trim(),
+  };
+  api('PATCH', '/peers/' + id, payload, function(err){
+    if (err) return showMsg('#peer-edit-msg', err, 'danger');
+    peerEditModal.hide();
+    loadPeers();
+  });
+}
+
+function deletePeer(id) {
+  var peer = wgPeers.find(function(p){ return p.id === id; });
+  if (!peer) return;
+  if (!confirm('Remove peer "' + peer.name + '"? Their VPN access will be revoked immediately.')) return;
+  api('DELETE', '/peers/' + id, null, function(err){
+    if (err) return alert('Error: ' + err);
+    loadPeers();
+  });
+}
+
+/* ── QR Code ────────────────────────────────────────────────────────────── */
+function showQr(peerId, peerName) {
+  currentQrPeerId = peerId;
+  $('#wg-qr-title').text((peerName || 'Peer') + ' — WireGuard Profile');
+  $('#wg-qr-img').hide();
+  $('#wg-qr-loading').show();
+  $('#wg-download-conf-btn').off('click').on('click', function(){ downloadConf(peerId); });
+  qrModal.show();
+  api('GET', '/peers/' + peerId + '/qr', null, function(err, data){
+    $('#wg-qr-loading').hide();
+    if (err || !data || !data.qr) {
+      $('#wg-qr-img').attr('src', '').hide();
+      return;
+    }
+    $('#wg-qr-img').attr('src', data.qr).show();
+  });
+}
+
+function downloadConf(peerId) {
+  // Opens in a new tab — browser downloads the attachment
+  window.open('/api/wireguard/peers/' + peerId + '/conf', '_blank');
+}
+
+/* ── Utility ────────────────────────────────────────────────────────────── */
+function showMsg(selector, text, type) {
+  $(selector)
+    .removeClass('alert-success alert-danger alert-warning')
+    .addClass('alert alert-' + (type || 'danger'))
+    .text(text)
+    .show();
+}
+</script>
+
+<%- include('bottom') %>
