@@ -1,3 +1,10 @@
+## v2.1.0
+- feat: **Gateway-to-gateway WireGuard mesh** (`routes/mesh.js`) — real site-to-site tunnels between theta-gateway instances, distinct from the existing roaming-client/exit-node WireGuard feature. Join-token bootstrap (`POST /api/mesh/join-tokens`, `/register`, `/join`), mesh-index addressing (172.24.\<idx\>.0/16 + 10.\<idx\>.0.0/16, per `theta-suite`'s `docs/MULTI_SITE_SPEC.md`).
+- feat: **In-kernel WireGuard with a userspace fallback** (`utils/wg_iface.js`) — prefers `ip link add type wireguard`, falls back to `wireguard-go` when the kernel module isn't available (older/hardened kernels, some container images, non-Linux). Both packages added to the Dockerfile.
+- feat: **mDNS local-discovery announcer** (`services/mdns_announce.js`) — advertises which public hostnames this site fronts (opt-in via `THETA_LOCAL_DISCOVERY_HOSTS`) so a `theta-agent` on the same LAN segment can skip the relay/WAN path. Companion piece to `theta-agent`'s discovery listener.
+- feat: **Mesh UI** (`/mesh`) — gateway identity (interface, kernel-vs-userspace mode), join-token minting, remote-join form, meshed-gateways table.
+- Verified with real two-container tests, not mocks: an actual encrypted WireGuard tunnel passing ICMP traffic end to end (0% loss), and the mDNS announce/discover/apply/revert cycle over real multicast. Two real bugs found and fixed along the way: `wg set ... allowed-ips` doesn't add a kernel route (a real handshake completed with zero routing, `ping` still failed, until `setPeer()` was fixed to add `ip route add` itself); and mDNS's default IPv6 query aborting the entire lookup — discarding an already-valid IPv4 response — when IPv6 isn't available.
+
 ## v2.0.1
 - docs: **Rebranded to Theta Gateway across the docs.** README title/links updated; removed the "Standalone Docker" and "Bare metal" install paths, which contradicted the Deployment section's own "exclusively via Docker Compose within Theta Suite" claim. Fixed stale links to the old per-repo GitHub Pages sites (`sso-manager-node`, `theta-env`) — now point at the unified `theta42.github.io/theta-suite/` docs site.
 
