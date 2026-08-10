@@ -19,6 +19,8 @@ require('@simpleworkjs/bao-conf').init({ path: 'jump-host', conf }).then(async (
 	require('../models');
 	const { bootstrapWireguard } = require('../services/wg_bootstrap');
 	await bootstrapWireguard();
+	const { startMdnsAnnounce } = require('../services/mdns_announce');
+	await startMdnsAnnounce();
 
 	const app = require('../app');
 	const middleware = require('../middleware/auth');
