@@ -1,0 +1,154 @@
+<%- include('top') %>
+<script type="text/javascript">app.auth.forceLogin();</script>
+
+<div class="container mt-4 mb-5">
+	<div class="d-flex align-items-center justify-content-between mb-4">
+		<div>
+			<h3 class="mb-1"><i class="fa-solid fa-diagram-project text-primary me-2"></i>Gateway Mesh</h3>
+			<p class="text-muted small mb-0">Site-to-site WireGuard tunnels between theta-gateway instances. Different from <a href="/wireguard">WireGuard</a>, which manages individual roaming-client peers and exit nodes.</p>
+		</div>
+	</div>
+
+	<div class="card shadow-sm mb-4">
+		<div class="card-header bg-dark text-light border-secondary">
+			<i class="fa-solid fa-server me-2"></i>This Gateway
+		</div>
+		<div class="card-body">
+			<div class="row g-3">
+				<div class="col-md-4">
+					<div class="p-3 border rounded bg-light dark-bg-subtle">
+						<div class="text-muted small fw-semibold">MESH INTERFACE</div>
+						<div class="font-monospace fw-bold text-primary mt-1" id="mesh-iface">Loading...</div>
+					</div>
+				</div>
+				<div class="col-md-4">
+					<div class="p-3 border rounded bg-light dark-bg-subtle">
+						<div class="text-muted small fw-semibold">WIREGUARD MODE</div>
+						<div class="fw-bold mt-1" id="mesh-kernel-mode">Loading...</div>
+					</div>
+				</div>
+				<div class="col-md-4">
+					<div class="p-3 border rounded bg-light dark-bg-subtle">
+						<div class="text-muted small fw-semibold">MESHED GATEWAYS</div>
+						<div class="fw-bold mt-1" id="mesh-gateway-count">Loading...</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="row g-4">
+		<div class="col-md-6">
+			<div class="card shadow-sm h-100">
+				<div class="card-header"><i class="fa-solid fa-key me-2"></i>Mint a Join Token</div>
+				<div class="card-body">
+					<p class="small text-muted">Give this to a new gateway so it can join this one's mesh (single-use, expires in 15 minutes). It calls this gateway's <code>/api/mesh/register</code> with it.</p>
+					<button class="btn btn-sm btn-success" onclick="mintMeshJoinToken()"><i class="fa-solid fa-plus me-1"></i> Mint Join Token</button>
+					<div id="mesh-join-token-result" class="mt-2"></div>
+				</div>
+			</div>
+		</div>
+		<div class="col-md-6">
+			<div class="card shadow-sm h-100">
+				<div class="card-header"><i class="fa-solid fa-right-to-bracket me-2"></i>Join a Remote Gateway's Mesh</div>
+				<div class="card-body">
+					<p class="small text-muted">Have a join token from another gateway? Use it here to mesh THIS gateway into that one.</p>
+					<div class="mb-2">
+						<input type="text" id="mesh-remote-endpoint" class="form-control form-control-sm" placeholder="Remote gateway URL (e.g. https://jump.master.example.com)">
+					</div>
+					<div class="mb-2">
+						<input type="text" id="mesh-remote-token" class="form-control form-control-sm font-monospace" placeholder="Join token (mjt_...)">
+					</div>
+					<button class="btn btn-sm btn-primary" onclick="joinRemoteMesh()"><i class="fa-solid fa-link me-1"></i> Join</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="card shadow-sm mt-4">
+		<div class="card-header"><i class="fa-solid fa-network-wired me-2"></i>Meshed Gateways</div>
+		<div class="card-body p-0" id="mesh-gateways-wrap">
+			<div class="text-center py-4 text-muted">Loading...</div>
+		</div>
+	</div>
+</div>
+
+<%- include('bottom') %>
+<script type="text/javascript">
+function esc(s) {
+	return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+$(document).ready(function(){
+	loadMeshStatus();
+});
+
+function loadMeshStatus() {
+	app.api.get('mesh/gateways', function(err, data){
+		if (err || !data) {
+			$('#mesh-iface').text('(unavailable)');
+			$('#mesh-kernel-mode').text('(unavailable)');
+			$('#mesh-gateway-count').text('—');
+			$('#mesh-gateways-wrap').html('<div class="text-center py-4 text-danger">Could not load mesh status: ' + esc((err && err.message) || 'unknown error') + '</div>');
+			return;
+		}
+		$('#mesh-iface').text(data.iface || 'wg-mesh');
+		$('#mesh-kernel-mode').html(data.kernelWireguard
+			? '<span class="badge bg-success"><i class="fa-solid fa-microchip me-1"></i> In-kernel</span>'
+			: '<span class="badge bg-warning text-dark"><i class="fa-solid fa-layer-group me-1"></i> Userspace (wireguard-go)</span>');
+		var gateways = data.gateways || [];
+		$('#mesh-gateway-count').text(gateways.length + ' gateway' + (gateways.length === 1 ? '' : 's'));
+		renderGatewaysTable(gateways);
+	});
+}
+
+function renderGatewaysTable(gateways) {
+	var $w = $('#mesh-gateways-wrap');
+	if (!gateways.length) {
+		$w.html('<div class="text-center py-4 text-muted"><i class="fa-solid fa-diagram-project me-2"></i>No meshed gateways yet.<br><small>Mint a join token above and have another gateway join, or join this one into a remote gateway\'s mesh.</small></div>');
+		return;
+	}
+	var html = '<table class="table table-striped table-hover mb-0 align-middle"><thead><tr>'
+		+ '<th>Site</th><th>Mesh Index</th><th>Mesh Address</th><th>Endpoint</th><th>Public Key</th><th>Last Seen</th>'
+		+ '</tr></thead><tbody>';
+	gateways.forEach(function(g){
+		var isSelf = g.siteSlug === '(self)';
+		html += '<tr' + (isSelf ? ' class="table-active"' : '') + '>'
+			+ '<td>' + (isSelf ? '<em>This gateway</em>' : esc(g.siteSlug || '(unlabeled)')) + '</td>'
+			+ '<td><span class="badge bg-primary">' + esc(g.meshIndex) + '</span></td>'
+			+ '<td><code class="small">172.24.' + esc(g.meshIndex) + '.0/24</code></td>'
+			+ '<td><code class="small text-primary">' + esc(g.endpoint || '—') + '</code></td>'
+			+ '<td><code class="small text-truncate d-inline-block" style="max-width:220px;" title="' + esc(g.publicKey) + '">' + esc(g.publicKey) + '</code></td>'
+			+ '<td class="small text-muted">' + (g.lastSeenAt ? new Date(Number(g.lastSeenAt)).toLocaleString() : '—') + '</td>'
+			+ '</tr>';
+	});
+	html += '</tbody></table>';
+	$w.html(html);
+}
+
+function mintMeshJoinToken() {
+	app.api.post('mesh/join-tokens', {}, function(err, data){
+		if (err) return app.messages.toast('Failed to mint join token: ' + err.message, 'danger');
+		$('#mesh-join-token-result').html(
+			'<div class="alert alert-success small mb-0">' +
+			'<strong>Shown once — copy it now:</strong><br>' +
+			'<code class="user-select-all">' + esc(data.token) + '</code>' +
+			'<br><span class="text-muted">Expires in ' + Math.round((data.expiresInSeconds || 0) / 60) + ' minutes.</span>' +
+			'</div>'
+		);
+	});
+}
+
+function joinRemoteMesh() {
+	var remoteEndpoint = ($('#mesh-remote-endpoint').val() || '').trim();
+	var joinToken = ($('#mesh-remote-token').val() || '').trim();
+	if (!remoteEndpoint || !joinToken) {
+		return app.messages.toast('Enter the remote gateway URL and a join token', 'warning');
+	}
+	app.api.post('mesh/join', { remoteEndpoint: remoteEndpoint, joinToken: joinToken }, function(err, data){
+		if (err) return app.messages.toast('Join failed: ' + err.message, 'danger');
+		app.messages.toast('Meshed successfully — this gateway is mesh index ' + data.meshIndex + ', peer is index ' + data.peerMeshIndex, 'success');
+		loadMeshStatus();
+	});
+}
+</script>

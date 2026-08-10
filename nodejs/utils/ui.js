@@ -38,6 +38,7 @@ module.exports = {
 		{href: '/dashboard', icon: 'fa-solid fa-gauge-high', label: 'Dashboard', groups: []},
 		{href: '/sessions', icon: 'fa-solid fa-plug-circle-bolt', label: 'Sessions', groups: []},
 		{href: '/wireguard', icon: 'fa-solid fa-shield-halved', label: 'WireGuard', groups: ['admin', 'app_jump_admin']},
+		{href: '/mesh', icon: 'fa-solid fa-diagram-project', label: 'Mesh', groups: ['admin', 'app_jump_admin']},
 		{href: '/audit', icon: 'fa-solid fa-clipboard-list', label: 'Audit', groups: ['admin', 'app_jump_admin']},
 	],
 };
