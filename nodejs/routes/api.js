@@ -19,4 +19,9 @@ router.use('/', middleware.auth, middleware.requireJumpAdmin, require('./jump'))
 // WireGuard peer + site management — admin only.
 router.use('/wireguard', middleware.auth, middleware.requireJumpAdmin, require('./wireguard'));
 
+// Gateway-to-gateway mesh — mixed auth (register/register-* are called by a
+// remote gateway with a bearer join token, not an admin session; join-tokens
+// mint + join are admin-gated). See routes/mesh.js for the per-route gates.
+router.use('/mesh', require('./mesh'));
+
 module.exports = router;
