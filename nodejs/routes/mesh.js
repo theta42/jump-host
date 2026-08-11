@@ -142,6 +142,15 @@ router.post('/join', middleware.auth, middleware.requireJumpAdmin, async (req, r
 		const data = await resp.json();
 
 		wgIface.setAddress(IFACE, meshCidrFor(data.meshIndex));
+		// Persist OUR OWN identity too, not just the remote peer's -- the
+		// receiving side of /register does this via ensureOwnMeshIndex(), but
+		// the initiating side (here) never did, so GET /api/mesh/self and the
+		// mesh UI's own-entry/"(self)" handling both silently saw nothing on
+		// whichever gateway called /join. register() is upsert-by-publicKey
+		// and reuses an existing entry's index, so this is safe to call even
+		// if a self-entry from a PRIOR /register (as the receiving side of a
+		// different peer) already exists.
+		await meshGateway.register({ publicKey: self.serverPublicKey, endpoint: self.serverEndpoint || '', siteSlug: '(self)', meshIndex: data.meshIndex });
 		await meshGateway.register({ publicKey: data.gateway.publicKey, endpoint: data.gateway.endpoint, siteSlug: '(remote master)' });
 		wgIface.setPeer(IFACE, {
 			publicKey: data.gateway.publicKey,

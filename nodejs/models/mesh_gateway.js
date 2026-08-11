@@ -62,7 +62,16 @@ function nextFreeMeshIndex(existing) {
 // Re-registering the same public key updates its endpoint/siteSlug but
 // reuses its existing mesh index -- a gateway that re-registers after a
 // restart must not get bumped to a new mesh subnet.
-async function register({ publicKey, endpoint, siteSlug }) {
+//
+// meshIndex is normally auto-assigned (the next free local index) -- correct
+// when THIS gateway is the one handing out indices (POST /register, for both
+// the caller and itself via ensureOwnMeshIndex). But the INITIATING side of
+// a join (POST /join) doesn't get to pick its own index -- the remote
+// already assigned it and returned it in the response -- so an explicit
+// meshIndex is accepted to record that exact value instead of whatever this
+// gateway's own local registry would have auto-picked (which has no reason
+// to agree with the value actually configured on the live wg0 interface).
+async function register({ publicKey, endpoint, siteSlug, meshIndex: explicitMeshIndex }) {
 	const redis = await getRedis();
 	const existing = await list();
 	const already = existing.find((g) => g.publicKey === publicKey);
@@ -75,7 +84,7 @@ async function register({ publicKey, endpoint, siteSlug }) {
 	}
 
 	const id = crypto.randomBytes(8).toString('hex');
-	const meshIndex = nextFreeMeshIndex(existing);
+	const meshIndex = explicitMeshIndex || nextFreeMeshIndex(existing);
 	const gateway = { id, publicKey, endpoint, siteSlug: siteSlug || '', meshIndex, createdAt: now, lastSeenAt: now };
 	await redis.hSet(gatewayKey(id), serialize(gateway));
 	await redis.zAdd(idxKey(), { score: now, value: id });
