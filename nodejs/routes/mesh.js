@@ -18,6 +18,10 @@ const conf = require('@simpleworkjs/conf');
 const meshGateway = require('../models/mesh_gateway');
 const meshJoinToken = require('../utils/mesh_join_token');
 const wgIface = require('../utils/wg_iface');
+// Reconciled after every mesh change so a newly-meshed (or removed) peer
+// becomes reachable (or stops being reachable) without a gateway restart --
+// see services/mesh_forwarder.js for what these listeners actually bridge.
+const { syncMeshForwarders } = require('../services/mesh_forwarder');
 const wgKeys = require('../utils/wg_keys');
 const { meshCidrFor, meshAllowedIpsFor } = require('../utils/mesh_addressing');
 
@@ -77,6 +81,8 @@ router.post('/register', async (req, res, next) => {
 			allowedIPs: meshAllowedIpsFor(peer.meshIndex),
 			keepalive: 25
 		});
+
+		syncMeshForwarders().catch((e) => console.error('[mesh] forwarder sync failed:', e.message));
 
 		res.json({
 			status: 'ok',
@@ -159,6 +165,8 @@ router.post('/join', middleware.auth, middleware.requireJumpAdmin, async (req, r
 			keepalive: 25
 		});
 
+		syncMeshForwarders().catch((e) => console.error('[mesh] forwarder sync failed:', e.message));
+
 		res.json({ status: 'ok', meshIndex: data.meshIndex, peerMeshIndex: data.gateway.meshIndex });
 	} catch (e) { next(e); }
 });
@@ -204,6 +212,8 @@ router.delete('/gateways/:id', middleware.auth, middleware.requireJumpAdmin, asy
 
 		wgIface.removePeer(IFACE, target.publicKey);
 		await meshGateway.remove(target.id);
+
+		syncMeshForwarders().catch((e) => console.error('[mesh] forwarder sync failed:', e.message));
 
 		res.json({ status: 'ok', removed: { id: target.id, siteSlug: target.siteSlug, meshIndex: target.meshIndex } });
 	} catch (e) { next(e); }
