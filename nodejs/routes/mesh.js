@@ -161,4 +161,25 @@ router.get('/gateways', middleware.auth, middleware.requireJumpAdmin, async (req
 	} catch (e) { next(e); }
 });
 
+// Remove a peer gateway: tears down its local WG peer entry + kernel routes
+// (wgIface.removePeer) and drops it from the registry. Does NOT reach out to
+// the remote gateway to remove the reciprocal peer entry there -- an admin
+// on that side needs to do the same. Refuses to remove the self-entry
+// ("(self)"), since that's this gateway's own identity, not a peer.
+router.delete('/gateways/:id', middleware.auth, middleware.requireJumpAdmin, async (req, res, next) => {
+	try {
+		const gateways = await meshGateway.list();
+		const target = gateways.find((g) => g.id === req.params.id);
+		if (!target) return res.status(404).json({ status: 'error', message: 'gateway not found' });
+		if (target.siteSlug === '(self)') {
+			return res.status(400).json({ status: 'error', message: 'cannot remove this gateway\'s own self-entry' });
+		}
+
+		wgIface.removePeer(IFACE, target.publicKey);
+		await meshGateway.remove(target.id);
+
+		res.json({ status: 'ok', removed: { id: target.id, siteSlug: target.siteSlug, meshIndex: target.meshIndex } });
+	} catch (e) { next(e); }
+});
+
 module.exports = router;

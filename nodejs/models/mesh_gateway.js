@@ -82,4 +82,13 @@ async function register({ publicKey, endpoint, siteSlug }) {
 	return gateway;
 }
 
-module.exports = { list, findByPublicKey, register, MAX_MESH_INDEX };
+async function remove(id) {
+	const redis = await getRedis();
+	const gw = deserialize(await redis.hGetAll(gatewayKey(id)));
+	if (!gw) return null;
+	await redis.del(gatewayKey(id));
+	await redis.zRem(idxKey(), id);
+	return gw;
+}
+
+module.exports = { list, findByPublicKey, register, remove, MAX_MESH_INDEX };

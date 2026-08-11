@@ -109,7 +109,7 @@ function renderGatewaysTable(gateways) {
 		return;
 	}
 	var html = '<table class="table table-striped table-hover mb-0 align-middle"><thead><tr>'
-		+ '<th>Site</th><th>Mesh Index</th><th>Mesh Address</th><th>Endpoint</th><th>Public Key</th><th>Last Seen</th>'
+		+ '<th>Site</th><th>Mesh Index</th><th>Mesh Address</th><th>Endpoint</th><th>Public Key</th><th>Last Seen</th><th class="text-end">Actions</th>'
 		+ '</tr></thead><tbody>';
 	gateways.forEach(function(g){
 		var isSelf = g.siteSlug === '(self)';
@@ -120,10 +120,23 @@ function renderGatewaysTable(gateways) {
 			+ '<td><code class="small text-primary">' + esc(g.endpoint || '—') + '</code></td>'
 			+ '<td><code class="small text-truncate d-inline-block" style="max-width:220px;" title="' + esc(g.publicKey) + '">' + esc(g.publicKey) + '</code></td>'
 			+ '<td class="small text-muted">' + (g.lastSeenAt ? new Date(Number(g.lastSeenAt)).toLocaleString() : '—') + '</td>'
+			+ '<td class="text-end">' + (isSelf ? '' :
+				'<button class="btn btn-sm btn-outline-danger" onclick="removeMeshGateway(\'' + esc(g.id) + '\', \'' + esc(g.siteSlug || g.id) + '\')" title="Remove peer"><i class="fa-solid fa-trash"></i></button>')
+			+ '</td>'
 			+ '</tr>';
 	});
 	html += '</tbody></table>';
 	$w.html(html);
+}
+
+async function removeMeshGateway(id, label) {
+	var ok = await app.messages.confirm('Remove mesh peer "' + label + '"? This tears down the local WireGuard peer + routes. The other side keeps its half until removed there too.', $('#mesh-gateways-wrap'), 'danger');
+	if (!ok) return;
+	app.api.delete('mesh/gateways/' + id, function(err){
+		if (err) return app.messages.toast('Failed to remove gateway: ' + err.message, 'danger');
+		app.messages.toast('Gateway removed', 'success');
+		loadMeshStatus();
+	});
 }
 
 function mintMeshJoinToken() {

@@ -137,12 +137,30 @@ function setPeer(name, { publicKey, endpoint, allowedIPs, keepalive }) {
 	}
 }
 
-// TODO: doesn't clean up the kernel routes setPeer added for this peer's
-// AllowedIPs (would need to record or query them first) -- not exercised by
-// any caller yet (nothing in this codebase removes a mesh peer today), but
-// flagging so whoever adds that doesn't get bitten by stale routes.
+// Removes the peer AND the kernel routes setPeer() added for its
+// AllowedIPs -- query them BEFORE removing the peer (once gone, `wg` no
+// longer knows what to clean up, and nothing else tracks these routes,
+// since they were added by us directly, not by wg-quick).
+//
+// Safe to assume none of a peer's AllowedIPs collide with this gateway's
+// own local address range: mesh indexes are unique per gateway
+// (models/mesh_gateway.js's nextFreeMeshIndex), so a peer's
+// 172.24.<peerIndex>.0/24 can never equal our own 172.24.<ownIndex>.0/24.
 function removePeer(name, publicKey) {
+	const show = tryRun('wg', ['show', name, 'allowed-ips']);
+	let allowedIPs = [];
+	if (show.ok) {
+		const line = show.out.split('\n').find((l) => l.startsWith(publicKey + '\t'));
+		if (line) {
+			allowedIPs = (line.split('\t')[1] || '').split(/\s+/).filter((ip) => ip && ip !== '(none)');
+		}
+	}
+
 	tryRun('wg', ['set', name, 'peer', publicKey, 'remove']);
+
+	for (const cidr of allowedIPs) {
+		tryRun('ip', ['route', 'del', cidr, 'dev', name]);
+	}
 }
 
 module.exports = {
