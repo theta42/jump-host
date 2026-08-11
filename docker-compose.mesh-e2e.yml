@@ -1,0 +1,96 @@
+# End-to-end test of the mesh DATA plane: does traffic for a site's services
+# actually cross the gateway-to-gateway WireGuard tunnel?
+#
+# The control plane (mint a join token, join, peers appear, ICMP crosses) was
+# already covered. What was not: every consumer of the mesh addressed
+# 172.24.<idx>.1:3001 directly, and nothing could reach it. WireGuard lives
+# inside the gateway container's namespace, so that address is unreachable
+# from the sibling containers (theta-directory, theta-proxy) that needed it,
+# and no process was listening on :3001 there either. Relay routes and
+# mesh-preferred replication both pointed at a dead target.
+#
+# This harness proves the fix end to end with real WireGuard:
+#
+#   client -> gateway-a:30002 --wg tunnel--> 172.24.2.1:3001 -> directory-b
+#
+#   docker compose -f docker-compose.mesh-e2e.yml up --build --abort-on-container-exit --exit-code-from client
+#   # exit 0 = MESH DATA PLANE E2E PASS
+
+services:
+  gateway-a:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mesh_e2e_gateway_a
+    cap_add: [NET_ADMIN]
+    environment:
+      - NODE_ENV=production
+      - app_web__port=3002
+      - app_auth__localAdminPass=meshE2E!pass1
+      - app_oauth__jwtSecret=mesh-e2e-gateway-a-jwt-secret
+      - app_wireguard__serverEndpoint=gateway-a:51820
+      # This site's directory, as the ingress forwarder should reach it.
+      - THETA_MESH_SERVICE_TARGET=directory-a:3001
+      - SITE_SLUG=site_a
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+      start_period: 5s
+
+  gateway-b:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mesh_e2e_gateway_b
+    cap_add: [NET_ADMIN]
+    environment:
+      - NODE_ENV=production
+      - app_web__port=3002
+      - app_auth__localAdminPass=meshE2E!pass2
+      - app_oauth__jwtSecret=mesh-e2e-gateway-b-jwt-secret
+      - app_wireguard__serverEndpoint=gateway-b:51820
+      - THETA_MESH_SERVICE_TARGET=directory-b:3001
+      - SITE_SLUG=site_b
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+      start_period: 5s
+
+  # Stand-ins for each site's theta-directory: the thing the mesh is supposed
+  # to carry traffic to. Deliberately dumb -- this test is about reachability,
+  # not about the directory API.
+  directory-a:
+    image: node:20-alpine
+    container_name: mesh_e2e_directory_a
+    command: ["node", "-e", "require('http').createServer((q,s)=>s.end('SITE-A')).listen(3001,'0.0.0.0',()=>console.log('directory-a on 3001'))"]
+
+  directory-b:
+    image: node:20-alpine
+    container_name: mesh_e2e_directory_b
+    command: ["node", "-e", "require('http').createServer((q,s)=>s.end('SITE-B')).listen(3001,'0.0.0.0',()=>console.log('directory-b on 3001'))"]
+
+  client:
+    image: node:20-alpine
+    container_name: mesh_e2e_client
+    working_dir: /test
+    volumes:
+      - ./test:/test:ro
+    command: ["node", "/test/mesh_data_plane_e2e.js"]
+    environment:
+      - GATEWAY_A_URL=http://gateway-a:3002
+      - GATEWAY_B_URL=http://gateway-b:3002
+      - GATEWAY_A_ADMIN_PASS=meshE2E!pass1
+      - GATEWAY_B_ADMIN_PASS=meshE2E!pass2
+    depends_on:
+      gateway-a:
+        condition: service_healthy
+      gateway-b:
+        condition: service_healthy
+      directory-a:
+        condition: service_started
+      directory-b:
+        condition: service_started

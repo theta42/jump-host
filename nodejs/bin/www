@@ -21,6 +21,12 @@ require('@simpleworkjs/bao-conf').init({ path: 'jump-host', conf }).then(async (
 	await bootstrapWireguard();
 	const { startMdnsAnnounce } = require('../services/mdns_announce');
 	await startMdnsAnnounce();
+	// Bridges the mesh tunnel to this site's services in both directions.
+	// Starts after bootstrapWireguard so wg0 usually has its address already;
+	// it re-reconciles on an interval regardless, since the peer set changes
+	// while the process is running.
+	const { startMeshForwarders } = require('../services/mesh_forwarder');
+	startMeshForwarders();
 
 	const app = require('../app');
 	const middleware = require('../middleware/auth');
