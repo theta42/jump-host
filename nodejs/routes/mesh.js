@@ -154,6 +154,24 @@ router.post('/join', middleware.auth, middleware.requireJumpAdmin, async (req, r
 	} catch (e) { next(e); }
 });
 
+// This gateway's own mesh address, for a LOCAL bootstrap script to discover
+// (e.g. theta-suite's site-join, running on the same host as this gateway)
+// without needing full jump-admin session auth -- any valid jmp_ API token
+// (middleware.auth, no requireJumpAdmin) is enough, same service-to-service
+// pattern as theta-proxy's prx_ tokens for proxy_client.js. Not a peer
+// listing, so no admin-only audit/config data is exposed here.
+router.get('/self', middleware.auth, async (req, res, next) => {
+	try {
+		const self = conf.wireguard || {};
+		let meshIp = null;
+		if (self.serverPublicKey) {
+			const entry = await meshGateway.findByPublicKey(self.serverPublicKey);
+			if (entry) meshIp = meshCidrFor(entry.meshIndex).split('/')[0];
+		}
+		res.json({ status: 'ok', meshIp, joined: !!meshIp, iface: IFACE });
+	} catch (e) { next(e); }
+});
+
 router.get('/gateways', middleware.auth, middleware.requireJumpAdmin, async (req, res, next) => {
 	try {
 		const gateways = await meshGateway.list();
