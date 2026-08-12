@@ -22,23 +22,23 @@ const wgIface = require('../utils/wg_iface');
 // becomes reachable (or stops being reachable) without a gateway restart --
 // see services/mesh_forwarder.js for what these listeners actually bridge.
 const { syncMeshForwarders } = require('../services/mesh_forwarder');
-const wgKeys = require('../utils/wg_keys');
-const { meshCidrFor, meshAllowedIpsFor } = require('../utils/mesh_addressing');
+// Identity, own-index, and interface application all live in mesh_state so
+// that boot-time reconciliation and these routes drive the interface through
+// exactly the same code -- they used to hand-roll the same four wgIface calls
+// in two slightly different orders.
+const meshState = require('../services/mesh_state');
+const { MESH_SERVICE_PORT_BASE } = require('../services/mesh_forwarder');
+const { meshCidrFor } = require('../utils/mesh_addressing');
 
 const router = express.Router();
-const IFACE = process.env.THETA_MESH_IFACE || 'wg-mesh';
-const MESH_LISTEN_PORT = process.env.THETA_MESH_LISTEN_PORT || 51820;
+const { IFACE } = meshState;
 
-async function ensureLocalIdentity() {
-	if (!conf.wireguard) conf.wireguard = {};
-	if (!conf.wireguard.serverPublicKey || !conf.wireguard.serverPrivateKey) {
-		// wg_bootstrap.js normally does this at startup; guard here too so this
-		// route works even if bootstrap hasn't run yet in a given environment.
-		const kp = wgKeys.generateKeypair();
-		conf.wireguard.serverPublicKey = kp.publicKey;
-		conf.wireguard.serverPrivateKey = kp.privateKey;
-	}
-	return conf.wireguard;
+// Live tunnel state, keyed by peer public key. Empty when the interface does
+// not exist -- which is itself the answer the UI needs to show ("mesh is
+// configured but the interface is down").
+function livePeerStatus() {
+	if (!wgIface.interfaceExists(IFACE)) return { up: false, peers: {} };
+	return { up: true, peers: wgIface.peerStatus(IFACE) };
 }
 
 // Mint a single-use mesh join token — the credential a NEW gateway presents
@@ -66,21 +66,22 @@ router.post('/register', async (req, res, next) => {
 			return res.status(400).json({ status: 'error', message: 'publicKey and endpoint are required' });
 		}
 
-		const self = await ensureLocalIdentity();
-		const peer = await meshGateway.register({ publicKey, endpoint, siteSlug });
+		const self = meshState.localIdentity();
+		// A gateway cannot be its own peer: WireGuard would reject the key and
+		// the registry entry would collide with the self-entry.
+		if (publicKey === self.serverPublicKey) {
+			return res.status(400).json({ status: 'error', message: 'a gateway cannot mesh with itself' });
+		}
 
-		await wgIface.ensureInterface(IFACE);
-		wgIface.setPrivateKey(IFACE, self.serverPrivateKey, MESH_LISTEN_PORT);
 		// This gateway's own mesh index -- assigned to ITSELF the first time
 		// anyone registers with it, since a solo gateway has no index yet.
-		const ownIndex = await ensureOwnMeshIndex();
-		wgIface.setAddress(IFACE, meshCidrFor(ownIndex));
-		wgIface.setPeer(IFACE, {
-			publicKey: peer.publicKey,
-			endpoint: peer.endpoint,
-			allowedIPs: meshAllowedIpsFor(peer.meshIndex),
-			keepalive: 25
-		});
+		// Claimed BEFORE the peer's so a fresh gateway keeps the lowest index
+		// for itself and the numbering stays stable however it was reached.
+		const ownIndex = await meshState.ensureOwnMeshIndex();
+		const peer = await meshGateway.register({ publicKey, endpoint, siteSlug });
+
+		await meshState.ensureInterfaceFor(ownIndex);
+		meshState.applyPeer(peer);
 
 		syncMeshForwarders().catch((e) => console.error('[mesh] forwarder sync failed:', e.message));
 
@@ -88,27 +89,14 @@ router.post('/register', async (req, res, next) => {
 			status: 'ok',
 			meshIndex: peer.meshIndex,
 			gateway: {
-				publicKey: conf.wireguard.serverPublicKey,
-				endpoint: conf.wireguard.serverEndpoint || '',
+				publicKey: self.serverPublicKey,
+				endpoint: self.serverEndpoint || '',
+				siteSlug: process.env.SITE_SLUG || '',
 				meshIndex: ownIndex
 			}
 		});
 	} catch (e) { next(e); }
 });
-
-// This gateway's own mesh index is just "the lowest free index, stable once
-// picked" -- stored as a synthetic self-entry in the same registry so it
-// survives restarts the same way peer entries do.
-async function ensureOwnMeshIndex() {
-	const self = await meshGateway.findByPublicKey(conf.wireguard.serverPublicKey);
-	if (self) return self.meshIndex;
-	const created = await meshGateway.register({
-		publicKey: conf.wireguard.serverPublicKey,
-		endpoint: conf.wireguard.serverEndpoint || '',
-		siteSlug: '(self)'
-	});
-	return created.meshIndex;
-}
 
 // Admin-initiated: join THIS gateway into a remote gateway's mesh. Generates
 // (or reuses) this gateway's identity, brings up the local interface, calls
@@ -121,9 +109,19 @@ router.post('/join', middleware.auth, middleware.requireJumpAdmin, async (req, r
 			return res.status(400).json({ status: 'error', message: 'remoteEndpoint and joinToken are required' });
 		}
 
-		const self = await ensureLocalIdentity();
-		await wgIface.ensureInterface(IFACE);
-		wgIface.setPrivateKey(IFACE, self.serverPrivateKey, MESH_LISTEN_PORT);
+		const self = meshState.localIdentity();
+
+		// A gateway belongs to exactly ONE mesh. Mesh indexes are handed out by
+		// whichever gateway you register with, from ITS OWN registry, so two
+		// meshes have two unrelated index spaces and cannot be merged without a
+		// coordinator that does not exist. Joining a second one used to
+		// "succeed": setAddress below would readdress the interface to the new
+		// mesh's index while register() kept the old self-entry (it is
+		// upsert-by-publicKey and reuses the existing index, ignoring the
+		// explicit one), leaving the interface and the registry permanently
+		// disagreeing -- mesh_forwarder would then bind ingress to an address
+		// no longer on the interface and fail forever.
+		const existingSelf = await meshGateway.findByPublicKey(self.serverPublicKey);
 
 		const controller = new AbortController();
 		const timer = setTimeout(() => controller.abort(), 15000);
@@ -146,24 +144,52 @@ router.post('/join', middleware.auth, middleware.requireJumpAdmin, async (req, r
 			return res.status(502).json({ status: 'error', message: 'remote registration failed: HTTP ' + resp.status + ' ' + text });
 		}
 		const data = await resp.json();
+		if (!data.gateway || !data.gateway.publicKey || !data.gateway.meshIndex) {
+			return res.status(502).json({ status: 'error', message: 'remote returned no usable gateway identity' });
+		}
+		// Without an endpoint for the remote there is nothing to dial: the peer
+		// entry would be created, the handshake would never be initiated from
+		// this side, and the tunnel would appear configured but dead. Say so
+		// instead (the remote needs app_wireguard__serverEndpoint set).
+		if (!data.gateway.endpoint) {
+			return res.status(502).json({
+				status: 'error',
+				message: 'remote gateway reported no WireGuard endpoint — set app_wireguard__serverEndpoint on it and retry'
+			});
+		}
+		if (existingSelf && existingSelf.meshIndex !== data.meshIndex) {
+			return res.status(409).json({
+				status: 'error',
+				message: `this gateway is already in a mesh as site index ${existingSelf.meshIndex}; ` +
+					`the remote assigned index ${data.meshIndex}. A gateway can only belong to one mesh — ` +
+					'remove its existing peers first if you mean to move it.'
+			});
+		}
 
-		wgIface.setAddress(IFACE, meshCidrFor(data.meshIndex));
 		// Persist OUR OWN identity too, not just the remote peer's -- the
 		// receiving side of /register does this via ensureOwnMeshIndex(), but
 		// the initiating side (here) never did, so GET /api/mesh/self and the
-		// mesh UI's own-entry/"(self)" handling both silently saw nothing on
-		// whichever gateway called /join. register() is upsert-by-publicKey
-		// and reuses an existing entry's index, so this is safe to call even
-		// if a self-entry from a PRIOR /register (as the receiving side of a
-		// different peer) already exists.
-		await meshGateway.register({ publicKey: self.serverPublicKey, endpoint: self.serverEndpoint || '', siteSlug: '(self)', meshIndex: data.meshIndex });
-		await meshGateway.register({ publicKey: data.gateway.publicKey, endpoint: data.gateway.endpoint, siteSlug: '(remote master)' });
-		wgIface.setPeer(IFACE, {
+		// mesh UI's own-entry handling both silently saw nothing on whichever
+		// gateway called /join.
+		await meshState.ensureOwnMeshIndex(data.meshIndex);
+		await meshState.ensureInterfaceFor(data.meshIndex);
+
+		// meshIndex is passed EXPLICITLY. The remote assigned itself that index
+		// and it is the one actually configured on the live interface; letting
+		// register() auto-assign from this gateway's own registry instead
+		// invents an unrelated number. That number only happened to agree in
+		// the two-gateway case (self takes 1, next free is 2, remote really is
+		// 2) and diverges the moment a third gateway exists -- and since
+		// mesh_forwarder derives its egress port from the stored index, the
+		// forwarder would then listen on a port nobody dials and point it at a
+		// site that may not exist.
+		const peer = await meshGateway.register({
 			publicKey: data.gateway.publicKey,
 			endpoint: data.gateway.endpoint,
-			allowedIPs: meshAllowedIpsFor(data.gateway.meshIndex),
-			keepalive: 25
+			siteSlug: data.gateway.siteSlug || '(remote master)',
+			meshIndex: data.gateway.meshIndex
 		});
+		meshState.applyPeer(peer);
 
 		syncMeshForwarders().catch((e) => console.error('[mesh] forwarder sync failed:', e.message));
 
@@ -192,21 +218,52 @@ router.get('/self', middleware.auth, async (req, res, next) => {
 router.get('/gateways', middleware.auth, middleware.requireJumpAdmin, async (req, res, next) => {
 	try {
 		const gateways = await meshGateway.list();
-		res.json({ status: 'ok', gateways, iface: IFACE, kernelWireguard: wgIface.kernelWireguardAvailable() });
+		const self = meshState.selfEntry(gateways);
+		// `self` is flagged from the public key rather than left to the UI to
+		// infer from siteSlug, which a registering peer controls.
+		const decorated = gateways.map((g) => ({
+			...g,
+			isSelf: !!(self && g.id === self.id),
+			meshIp: g.meshIndex ? meshCidrFor(Number(g.meshIndex)).split('/')[0] : null,
+			servicePort: g.meshIndex ? MESH_SERVICE_PORT_BASE + Number(g.meshIndex) : null
+		}));
+		res.json({
+			status: 'ok',
+			gateways: decorated,
+			iface: IFACE,
+			kernelWireguard: wgIface.kernelWireguardAvailable(),
+			live: livePeerStatus()
+		});
+	} catch (e) { next(e); }
+});
+
+// Re-apply the registry to the live interface on demand. Boot does this
+// automatically (bin/www); this is the manual escape hatch for an operator
+// looking at a mesh whose interface has drifted -- and the button that makes
+// "the tunnel is down but the peers are all listed" fixable from the UI.
+router.post('/reconcile', middleware.auth, middleware.requireJumpAdmin, async (req, res, next) => {
+	try {
+		const result = await meshState.reconcileMesh();
+		await syncMeshForwarders();
+		res.json({ status: 'ok', ...result });
 	} catch (e) { next(e); }
 });
 
 // Remove a peer gateway: tears down its local WG peer entry + kernel routes
 // (wgIface.removePeer) and drops it from the registry. Does NOT reach out to
 // the remote gateway to remove the reciprocal peer entry there -- an admin
-// on that side needs to do the same. Refuses to remove the self-entry
-// ("(self)"), since that's this gateway's own identity, not a peer.
+// on that side needs to do the same. Refuses to remove this gateway's own
+// self-entry, since that's its identity in the mesh, not a peer.
 router.delete('/gateways/:id', middleware.auth, middleware.requireJumpAdmin, async (req, res, next) => {
 	try {
 		const gateways = await meshGateway.list();
 		const target = gateways.find((g) => g.id === req.params.id);
 		if (!target) return res.status(404).json({ status: 'error', message: 'gateway not found' });
-		if (target.siteSlug === '(self)') {
+		// Compared by public key, not by the '(self)' slug: the slug comes from
+		// the remote's own /register body, so a peer could previously send
+		// siteSlug='(self)' and make itself permanently undeletable here.
+		const self = meshState.selfEntry(gateways);
+		if (self && target.id === self.id) {
 			return res.status(400).json({ status: 'error', message: 'cannot remove this gateway\'s own self-entry' });
 		}
 

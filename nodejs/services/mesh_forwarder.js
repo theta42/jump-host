@@ -34,6 +34,7 @@
 
 const net = require('net');
 const meshGateway = require('../models/mesh_gateway');
+const { selfEntry } = require('./mesh_state');
 const { MESH_SUBNET_PREFIX } = require('../utils/mesh_addressing');
 
 // Base for derived egress ports. 30000 + meshIndex (1-254) stays clear of the
@@ -125,7 +126,11 @@ async function syncMeshForwarders() {
 		return;
 	}
 
-	const self = gateways.find((g) => g.siteSlug === '(self)');
+	// Identified by public key, not by the '(self)' slug -- that slug arrives
+	// in a remote gateway's POST /api/mesh/register body, so a peer sending
+	// siteSlug='(self)' could steer the ingress listener onto ITS address
+	// instead of ours (and suppress its own egress listener).
+	const self = selfEntry(gateways);
 	const wanted = new Set();
 
 	// Ingress: make THIS site's directory answer on this gateway's mesh IP,
@@ -145,7 +150,8 @@ async function syncMeshForwarders() {
 	// Egress: one local port per peer, reachable by name from the sibling
 	// containers on this site's docker network (proxy, sso-manager).
 	for (const peer of gateways) {
-		if (!peer.meshIndex || peer.siteSlug === '(self)') continue;
+		if (!peer.meshIndex) continue;
+		if (self && peer.id === self.id) continue;
 		const key = `egress:${peer.meshIndex}`;
 		wanted.add(key);
 		listen({

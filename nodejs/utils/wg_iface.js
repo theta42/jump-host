@@ -78,22 +78,30 @@ async function ensureInterface(name) {
 	return { mode: 'userspace', pid: child.pid };
 }
 
+// `wg set ... private-key <file>` and NOT `wg setconf`: both read the key from
+// a file rather than argv (argv would leak it via /proc/<pid>/cmdline to
+// anyone on the host), but `setconf` APPLIES a whole config, which means it
+// deletes every peer not named in that file. Applying an [Interface]-only
+// config -- which is all this function has -- therefore wipes the interface's
+// entire peer list. That is exactly what used to happen on each mesh change:
+// registering a second gateway tore down the tunnel to the first, because
+// setPrivateKey ran before setPeer and took the existing peers with it.
+// Verified against wireguard-go in the gateway image: setconf 1 peer -> 0,
+// `wg set private-key` leaves 2 peers at 2.
+//
+// ListenPort matters: without one, WG binds an ephemeral port, which is fine
+// for a purely outbound roaming client but useless for a gateway another
+// gateway needs to dial back into as an Endpoint.
 function setPrivateKey(name, privateKeyBase64, listenPort) {
-	// `wg setconf` reads the private key from a file, not argv (argv would leak
-	// it via /proc/<pid>/cmdline to anyone on the host). Pipe it through stdin
-	// via a temp file instead -- see setPeer's note on the same tradeoff.
-	// ListenPort matters: without one, WG binds an ephemeral port, which is
-	// fine for a purely outbound roaming client but useless for a gateway
-	// another gateway needs to dial back into as an Endpoint.
 	const fs = require('fs');
 	const os = require('os');
 	const path = require('path');
-	const tmp = path.join(os.tmpdir(), `wg-${name}-${Date.now()}.conf`);
-	const lines = ['[Interface]', `PrivateKey = ${privateKeyBase64}`];
-	if (listenPort) lines.push(`ListenPort = ${listenPort}`);
-	fs.writeFileSync(tmp, lines.join('\n') + '\n', { mode: 0o600 });
+	const tmp = path.join(os.tmpdir(), `wg-${name}-${Date.now()}.key`);
+	fs.writeFileSync(tmp, privateKeyBase64 + '\n', { mode: 0o600 });
 	try {
-		run('wg', ['setconf', name, tmp]);
+		const args = ['set', name, 'private-key', tmp];
+		if (listenPort) args.push('listen-port', String(listenPort));
+		run('wg', args);
 	} finally {
 		fs.unlinkSync(tmp);
 	}
@@ -163,6 +171,40 @@ function removePeer(name, publicKey) {
 	}
 }
 
+// Live per-peer status straight from the kernel/userspace device: has this
+// peer ever completed a handshake, and how recently? The registry's
+// `lastSeenAt` only records when a peer REGISTERED, which says nothing about
+// whether the tunnel is currently up -- this does.
+//
+// `wg show <iface> dump` is used rather than the human-readable output
+// because it is stable and parseable. Its FIRST line is the interface itself
+// and begins with THIS GATEWAY'S PRIVATE KEY -- it is skipped, and only the
+// per-peer fields below are ever returned, so the private key cannot leak
+// into an API response.
+//
+// Peer line: publickey presharedkey endpoint allowed-ips latest-handshake
+//            transfer-rx transfer-tx persistent-keepalive
+function peerStatus(name) {
+	const dump = tryRun('wg', ['show', name, 'dump']);
+	if (!dump.ok) return {};
+	const out = {};
+	const lines = dump.out.trim().split('\n').slice(1); // skip the interface line
+	for (const line of lines) {
+		const f = line.split('\t');
+		if (f.length < 7) continue;
+		const handshake = Number(f[4]) || 0;
+		out[f[0]] = {
+			endpoint: f[2] === '(none)' ? null : f[2],
+			latestHandshake: handshake,
+			// A peer that has never handshaken reports 0, not a timestamp.
+			handshakeAgeSeconds: handshake ? Math.max(0, Math.floor(Date.now() / 1000) - handshake) : null,
+			rxBytes: Number(f[5]) || 0,
+			txBytes: Number(f[6]) || 0
+		};
+	}
+	return out;
+}
+
 module.exports = {
 	kernelWireguardAvailable,
 	ensureInterface,
@@ -170,5 +212,6 @@ module.exports = {
 	setAddress,
 	setPeer,
 	removePeer,
-	interfaceExists
+	interfaceExists,
+	peerStatus
 };
