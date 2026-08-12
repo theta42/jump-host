@@ -284,7 +284,14 @@ async function reconcileMesh() {
 
 let timer = null;
 
-function startMeshReconcile({ intervalMs = 60000 } = {}) {
+// How often the gateway re-reads the directory and re-applies. A peer that
+// publishes after this gateway's last pass becomes usable on the next one, so
+// the interval is also the worst-case delay before a new site or device works.
+// Overridable mainly so the end-to-end harness does not spend minutes waiting
+// on a tick.
+const RECONCILE_INTERVAL_MS = Number(process.env.THETA_MESH_RECONCILE_MS || 60000);
+
+function startMeshReconcile({ intervalMs = RECONCILE_INTERVAL_MS } = {}) {
 	reconcileMesh().catch((err) => console.error('[mesh] initial reconcile failed:', err.message));
 	if (timer) clearInterval(timer);
 	timer = setInterval(() => {
@@ -299,7 +306,7 @@ function stopMeshReconcile() {
 }
 
 module.exports = {
-	IFACE, LISTEN_PORT,
+	IFACE, LISTEN_PORT, RECONCILE_INTERVAL_MS,
 	localIdentity, exitIdentity, localEndpoint, planReconcile, applyPlan, reconcileMesh,
 	startMeshReconcile, stopMeshReconcile
 };

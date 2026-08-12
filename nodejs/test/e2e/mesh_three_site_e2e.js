@@ -76,26 +76,33 @@ async function main() {
 	});
 	check('every gateway published its identity to its directory', true);
 
+	// Expected LIVE peer counts once the cluster has converged:
+	//   site 1 (hub): 2 site peers + 1 exit-client (site 2's device exits here)
+	//   site 2:       2 site peers + 1 device
+	//   site 3:       2 site peers
+	const expectedPeers = { 1: 3, 2: 3, 3: 2 };
+
+	// Wait on the LIVE interface, not on the plan. The plan is recomputed from
+	// the directory on every request and so converges immediately, but the
+	// interface is only rewritten on the reconcile tick -- a gateway learns a
+	// peer that published after its last pass on the next one. Asserting the
+	// plan and then reading `live` in the same breath is a race, and it fired:
+	// sites 2 and 3 showed one applied peer while already planning two.
 	const states = {};
-	await waitFor('every gateway to build two peers', async () => {
+	await waitFor('every gateway to apply its peers', async () => {
 		for (const gw of GATEWAYS) states[gw.siteId] = await status(gw);
 		return GATEWAYS.every((gw) => {
-			const sitePeers = (states[gw.siteId].planned.peers || []).filter((p) => p.kind === 'site');
-			return sitePeers.length === 2;
+			const live = states[gw.siteId].live;
+			return Object.keys((live && live.peers) || {}).length === expectedPeers[gw.siteId];
 		});
-	});
+	}, 150000);
 
-	// THE peer-wipe regression. Every peer present on the live interface, not
-	// just in the plan: `wg setconf` used to leave exactly one.
-	//   site 1 (hub): 2 site peers + 1 exit-client (site 2's device exits here)
-	//   site 2: 2 site peers + 1 device
-	//   site 3: 2 site peers
+	// THE peer-wipe regression: every peer present at once, read from the
+	// interface rather than the plan. `wg setconf` used to leave exactly one.
 	for (const gw of GATEWAYS) {
-		const live = states[gw.siteId].live;
-		const livePeerCount = Object.keys((live && live.peers) || {}).length;
-		const expected = gw.siteId === 3 ? 2 : 3;
-		check(`site ${gw.siteId} has ${expected} peers on the live interface`,
-			livePeerCount === expected, `saw ${livePeerCount}`);
+		const livePeerCount = Object.keys((states[gw.siteId].live.peers) || {}).length;
+		check(`site ${gw.siteId} has ${expectedPeers[gw.siteId]} peers on the live interface`,
+			livePeerCount === expectedPeers[gw.siteId], `saw ${livePeerCount}`);
 	}
 
 	// The exit site must accept the originating gateway under its EXIT key.

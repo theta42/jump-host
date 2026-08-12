@@ -51,6 +51,9 @@ services:
     container_name: mesh_e2e_gateway_1
     environment:
       - NODE_ENV=production
+      # A peer that publishes after a gateway's last pass is applied on the
+      # next one, so in the harness that interval is dead time: 5s, not 60.
+      - THETA_MESH_RECONCILE_MS=5000
       - app_web__port=3002
       - app_auth__localAdminPass=meshE2E!pass1
       - app_oauth__jwtSecret=mesh-e2e-gw1-jwt-secret
@@ -64,6 +67,9 @@ services:
     container_name: mesh_e2e_gateway_2
     environment:
       - NODE_ENV=production
+      # A peer that publishes after a gateway's last pass is applied on the
+      # next one, so in the harness that interval is dead time: 5s, not 60.
+      - THETA_MESH_RECONCILE_MS=5000
       - app_web__port=3002
       - app_auth__localAdminPass=meshE2E!pass2
       - app_oauth__jwtSecret=mesh-e2e-gw2-jwt-secret
@@ -77,6 +83,9 @@ services:
     container_name: mesh_e2e_gateway_3
     environment:
       - NODE_ENV=production
+      # A peer that publishes after a gateway's last pass is applied on the
+      # next one, so in the harness that interval is dead time: 5s, not 60.
+      - THETA_MESH_RECONCILE_MS=5000
       - app_web__port=3002
       - app_auth__localAdminPass=meshE2E!pass3
       - app_oauth__jwtSecret=mesh-e2e-gw3-jwt-secret
