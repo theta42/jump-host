@@ -11,6 +11,14 @@
 #
 # Both are structurally invisible below three sites.
 #
+# Credentials are supplied at run time rather than written down here: these
+# containers live for about ninety seconds and are never deployed, but a
+# literal password in a committed file is a literal password in a committed
+# file, and secret scanners are right to say so.
+#
+#   export E2E_PASS=$(openssl rand -hex 12) \
+#          E2E_JWT=$(openssl rand -hex 24) \
+#          E2E_TOKEN=$(openssl rand -hex 16)
 #   docker compose -f docker-compose.mesh-e2e.yml up --build \
 #     --abort-on-container-exit --exit-code-from checker
 #   # exit 0 = THREE-SITE MESH E2E PASS
@@ -55,10 +63,10 @@ services:
       # next one, so in the harness that interval is dead time: 5s, not 60.
       - THETA_MESH_RECONCILE_MS=5000
       - app_web__port=3002
-      - app_auth__localAdminPass=meshE2E!pass1
-      - app_oauth__jwtSecret=mesh-e2e-gw1-jwt-secret
+      - app_auth__localAdminPass=${E2E_PASS:?generate one — see the header}
+      - app_oauth__jwtSecret=${E2E_JWT:?generate one — see the header}
       - DIRECTORY_INTERNAL_URL=http://fake-directory:4001
-      - DIRECTORY_API_TOKEN=e2e-token
+      - DIRECTORY_API_TOKEN=${E2E_TOKEN:?generate one — see the header}
       - THETA_MESH_ENDPOINT=gateway-1:51820
       - SITE_SLUG=hub
 
@@ -71,10 +79,10 @@ services:
       # next one, so in the harness that interval is dead time: 5s, not 60.
       - THETA_MESH_RECONCILE_MS=5000
       - app_web__port=3002
-      - app_auth__localAdminPass=meshE2E!pass2
-      - app_oauth__jwtSecret=mesh-e2e-gw2-jwt-secret
+      - app_auth__localAdminPass=${E2E_PASS:?generate one — see the header}
+      - app_oauth__jwtSecret=${E2E_JWT:?generate one — see the header}
       - DIRECTORY_INTERNAL_URL=http://fake-directory:4002
-      - DIRECTORY_API_TOKEN=e2e-token
+      - DIRECTORY_API_TOKEN=${E2E_TOKEN:?generate one — see the header}
       - THETA_MESH_ENDPOINT=gateway-2:51820
       - SITE_SLUG=office
 
@@ -87,10 +95,10 @@ services:
       # next one, so in the harness that interval is dead time: 5s, not 60.
       - THETA_MESH_RECONCILE_MS=5000
       - app_web__port=3002
-      - app_auth__localAdminPass=meshE2E!pass3
-      - app_oauth__jwtSecret=mesh-e2e-gw3-jwt-secret
+      - app_auth__localAdminPass=${E2E_PASS:?generate one — see the header}
+      - app_oauth__jwtSecret=${E2E_JWT:?generate one — see the header}
       - DIRECTORY_INTERNAL_URL=http://fake-directory:4003
-      - DIRECTORY_API_TOKEN=e2e-token
+      - DIRECTORY_API_TOKEN=${E2E_TOKEN:?generate one — see the header}
       - THETA_MESH_ENDPOINT=gateway-3:51820
       - SITE_SLUG=home
 
@@ -105,9 +113,9 @@ services:
       - GATEWAY_1_URL=http://gateway-1:3002
       - GATEWAY_2_URL=http://gateway-2:3002
       - GATEWAY_3_URL=http://gateway-3:3002
-      - GATEWAY_1_ADMIN_PASS=meshE2E!pass1
-      - GATEWAY_2_ADMIN_PASS=meshE2E!pass2
-      - GATEWAY_3_ADMIN_PASS=meshE2E!pass3
+      - GATEWAY_1_ADMIN_PASS=${E2E_PASS}
+      - GATEWAY_2_ADMIN_PASS=${E2E_PASS}
+      - GATEWAY_3_ADMIN_PASS=${E2E_PASS}
       - FAKE_DIRECTORY_URL=http://fake-directory:4001
     depends_on:
       gateway-1:
