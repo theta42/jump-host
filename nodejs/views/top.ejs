@@ -28,7 +28,19 @@
 		<script type="text/javascript" src="/static-modules/@simpleworkjs/frontend/lib/app.validate.js"></script>
 		<script type="text/javascript" src="/static-modules/@simpleworkjs/frontend/lib/app.sync.js"></script>
 		<script type="text/javascript" src="/static-modules/@simpleworkjs/frontend/lib/app.filter.js"></script>
-		<script type="text/javascript" src="/static/lib/js/app.notify.js"></script>
+		<script type="text/javascript" src="/static-modules/@simpleworkjs/frontend/lib/app.notify.js"></script>
+		<script type="text/javascript">
+			// Which page each kind of notification opens. Runs before ready,
+			// so it lands before app.notify initialises itself.
+			app.notify.configure({
+			links: {
+				// The audit log is the event stream that matters here: who
+				// connected to what.
+				AuditEvent: function(){ return '/audit'; },
+				ApiToken:   function(){ return '/profile'; },
+			},
+			});
+		</script>
 		<script type="text/javascript" src="/static/js/app.js"></script>
 	</head>
 	<body>
