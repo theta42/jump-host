@@ -108,7 +108,14 @@ fi
 # the install "succeeds" and locks you out of the box.
 SSH_PORT="${JUMP_SSH_PORT:-2222}"
 if ss -lntp 2>/dev/null | grep -qE "[:.]${SSH_PORT}\b"; then
-	die "port ${SSH_PORT} is already in use — set JUMP_SSH_PORT to something free and re-run"
+	# On an upgrade the gateway's own running instance legitimately holds the
+	# port — that is not a conflict, and install.sh restarts it below anyway.
+	# Only die when somebody else owns it.
+	OWN_PID="$(systemctl show -p MainPID --value theta-gateway.service 2>/dev/null || true)"
+	if [[ -z "$OWN_PID" || "$OWN_PID" == "0" ]] \
+		|| ! ss -lntp 2>/dev/null | grep -qE "pid=${OWN_PID}[,) ]"; then
+		die "port ${SSH_PORT} is already in use — set JUMP_SSH_PORT to something free and re-run"
+	fi
 fi
 
 # ── application tree ─────────────────────────────────────────────────────────
