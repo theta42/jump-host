@@ -1,111 +1,146 @@
 'use strict';
 
-// The rules that decide what the wg-mesh interface should look like, given
-// what's in the peer registry. These are the rules that were wrong or missing
-// before: the registry survives a restart and the interface does not, so
-// something has to be able to rebuild one from the other -- and it has to
-// identify THIS gateway by something a remote peer cannot forge.
+// Turning the directory's roster into an interface plan. These are the rules
+// that decide what actually gets configured, so they are tested apart from the
+// `wg`/`ip`/`iptables` calls that carry them out.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { planReconcile, selfEntry } = require('../../services/mesh_state');
+const { planReconcile } = require('../../services/mesh_state');
 
-const OUR_KEY = 'b3VyLWdhdGV3YXktcHVibGljLWtleS0wMDAwMDAwMDA=';
-const PEER_KEY = 'cGVlci1nYXRld2F5LXB1YmxpYy1rZXktMDAwMDAwMDA=';
-const OTHER_KEY = 'b3RoZXItZ2F0ZXdheS1wdWJsaWMta2V5LTAwMDAwMDA=';
+const SITE_KEY = (n) => Buffer.from(`site-${n}-public-key-padding-000`).toString('base64').slice(0, 44);
+const CLIENT_KEY = (n) => Buffer.from(`client-${n}-public-key-padding-0`).toString('base64').slice(0, 44);
 
-const entry = (over) => ({
-	id: 'id-' + Math.random().toString(16).slice(2),
-	publicKey: PEER_KEY, endpoint: 'peer:51820', siteSlug: 'site-b', meshIndex: 2,
+const peersDoc = (over = {}) => ({
+	localSiteId: 2,
+	hubSiteId: 1,
+	peers: [
+		{ siteId: 1, slug: 'hub', publicKey: SITE_KEY(1), endpoint: 'hub.example:51820', isHub: true,
+			allowedIps: ['10.0.0.0/8', '172.24.0.0/16', '172.24.0.1/32', '10.1.0.0/16'] },
+		{ siteId: 5, slug: 'nl', publicKey: SITE_KEY(5), endpoint: 'nl.example:51820', isHub: false,
+			allowedIps: ['172.24.0.5/32', '10.5.0.0/16'] }
+	],
 	...over
 });
 
-test('the self-entry is found by public key', () => {
-	const gateways = [entry({ publicKey: PEER_KEY }), entry({ publicKey: OUR_KEY, siteSlug: '(self)', meshIndex: 1 })];
-	assert.strictEqual(selfEntry(gateways, OUR_KEY).meshIndex, 1);
-});
+const clientsDoc = (clients) => ({ localSiteId: 2, clients: clients || [] });
 
-// The '(self)' slug arrives in the REMOTE's POST /api/mesh/register body, so
-// it is attacker-controlled. Trusting it let a peer impersonate this
-// gateway's own entry -- which decides where mesh_forwarder binds its ingress
-// listener and which entry DELETE /api/mesh/gateways/:id refuses to remove.
-test('a peer that registers itself as "(self)" is not mistaken for us', () => {
-	const gateways = [
-		entry({ publicKey: PEER_KEY, siteSlug: '(self)', meshIndex: 7 }),
-		entry({ publicKey: OUR_KEY, siteSlug: 'site-a', meshIndex: 1 })
-	];
-
-	const self = selfEntry(gateways, OUR_KEY);
-	assert.strictEqual(self.publicKey, OUR_KEY);
-	assert.strictEqual(self.meshIndex, 1);
-
-	// ...and the impostor is treated as an ordinary peer, so it still gets an
-	// egress listener and stays deletable.
-	const plan = planReconcile(gateways, OUR_KEY);
-	assert.strictEqual(plan.meshIndex, 1);
-	assert.deepStrictEqual(plan.peers.map((p) => p.publicKey), [PEER_KEY]);
-});
-
-test('a gateway that has never meshed brings up no interface at all', () => {
-	const plan = planReconcile([], OUR_KEY);
-	assert.strictEqual(plan.joined, false);
-	assert.strictEqual(plan.address, null);
+test('a site without an id configures nothing', () => {
+	// A gateway whose site has not joined a directory has no addresses to
+	// claim -- it must not invent any.
+	const plan = planReconcile({ localSiteId: null, peers: [] }, clientsDoc(), null);
+	assert.strictEqual(plan.ready, false);
+	assert.deepStrictEqual(plan.addresses, []);
 	assert.deepStrictEqual(plan.peers, []);
 });
 
-test('an entry with no mesh index cannot be this gateway either', () => {
-	const plan = planReconcile([entry({ publicKey: OUR_KEY, meshIndex: 0 })], OUR_KEY);
-	assert.strictEqual(plan.joined, false);
+test('the gateway takes both its mesh identity and its site router address', () => {
+	const plan = planReconcile(peersDoc(), clientsDoc(), null);
+	// 172.24.0.2/32 is how other gateways know us; 10.2.0.1/16 is how this
+	// site's own clients and services get onto the mesh.
+	assert.deepStrictEqual(plan.addresses, ['172.24.0.2/32', '10.2.0.1/16']);
+	assert.strictEqual(plan.siteCidr, '10.2.0.0/16');
 });
 
-test('the plan restores this gateway address and every peer', () => {
-	const gateways = [
-		entry({ publicKey: OUR_KEY, siteSlug: '(self)', meshIndex: 1 }),
-		entry({ publicKey: PEER_KEY, endpoint: 'b.example:51820', meshIndex: 2 }),
-		entry({ publicKey: OTHER_KEY, endpoint: 'c.example:51820', meshIndex: 3 })
-	];
-
-	const plan = planReconcile(gateways, OUR_KEY);
-	assert.strictEqual(plan.joined, true);
-	assert.strictEqual(plan.address, '172.24.1.1/24');
-	assert.strictEqual(plan.peers.length, 2);
-
-	// Each peer gets BOTH the mesh /24 and that site's reserved 10.<idx>.0.0/16
-	// -- the same AllowedIPs the live join path applies, since a rebuilt
-	// interface that routes less than the original is just a subtler outage.
-	assert.deepStrictEqual(plan.peers[0].allowedIPs, ['172.24.2.0/24', '10.2.0.0/16']);
-	assert.deepStrictEqual(plan.peers[1].allowedIPs, ['172.24.3.0/24', '10.3.0.0/16']);
-	assert.strictEqual(plan.peers[0].endpoint, 'b.example:51820');
+test('peer AllowedIPs come from the directory unchanged', () => {
+	// The directory resolves them, so the addressing rules live in one place
+	// rather than being reimplemented on every gateway.
+	const plan = planReconcile(peersDoc(), clientsDoc(), null);
+	const hub = plan.peers.find((p) => p.label === 'hub');
+	assert.deepStrictEqual(hub.allowedIPs, ['10.0.0.0/8', '172.24.0.0/16', '172.24.0.1/32', '10.1.0.0/16']);
 });
 
-test('this gateway is never included as a peer of itself', () => {
-	const gateways = [entry({ publicKey: OUR_KEY, siteSlug: '(self)', meshIndex: 1 })];
-	assert.deepStrictEqual(planReconcile(gateways, OUR_KEY).peers, []);
+test('only peers we can dial get a keepalive', () => {
+	const doc = peersDoc();
+	doc.peers.push({ siteId: 7, slug: 'behind-nat', publicKey: SITE_KEY(7), endpoint: '', allowedIps: ['172.24.0.7/32', '10.7.0.0/16'] });
+	const plan = planReconcile(doc, clientsDoc(), null);
+
+	assert.strictEqual(plan.peers.find((p) => p.label === 'hub').keepalive, 25);
+	// A peer with no endpoint is one that dials US; a keepalive would have
+	// nowhere to send.
+	assert.strictEqual(plan.peers.find((p) => p.label === 'behind-nat').keepalive, 0);
 });
 
-// A half-written registry row must not take the whole mesh down with it.
-test('unusable registry rows are skipped, not fatal', () => {
-	const gateways = [
-		entry({ publicKey: OUR_KEY, siteSlug: '(self)', meshIndex: 1 }),
-		entry({ publicKey: '', meshIndex: 4 }),
-		entry({ publicKey: OTHER_KEY, meshIndex: 0 }),
-		entry({ publicKey: PEER_KEY, meshIndex: 5 })
-	];
-
-	const plan = planReconcile(gateways, OUR_KEY);
-	assert.deepStrictEqual(plan.peers.map((p) => p.meshIndex), [5]);
+test('a peer with no public key is skipped rather than half-applied', () => {
+	const doc = peersDoc();
+	doc.peers.push({ siteId: 9, slug: 'unpublished', publicKey: '', allowedIps: ['10.9.0.0/16'] });
+	const plan = planReconcile(doc, clientsDoc(), null);
+	assert.ok(!plan.peers.some((p) => p.label === 'unpublished'));
 });
 
-// mesh_gateway stores every field as a Redis hash string; a peer index that
-// arrives as "3" must still produce numeric addressing.
-test('string mesh indexes from Redis are normalised', () => {
-	const gateways = [
-		entry({ publicKey: OUR_KEY, siteSlug: '(self)', meshIndex: '1' }),
-		entry({ publicKey: PEER_KEY, meshIndex: '3' })
-	];
+// A site that has joined the directory but whose gateway has never started has
+// a roster row and no key -- it must not break everyone else's reconcile.
+test('a peer with no routes is skipped', () => {
+	const doc = peersDoc();
+	doc.peers.push({ siteId: 9, slug: 'no-routes', publicKey: SITE_KEY(9), allowedIps: [] });
+	const plan = planReconcile(doc, clientsDoc(), null);
+	assert.ok(!plan.peers.some((p) => p.label === 'no-routes'));
+});
 
-	const plan = planReconcile(gateways, OUR_KEY);
-	assert.strictEqual(plan.address, '172.24.1.1/24');
-	assert.deepStrictEqual(plan.peers[0].allowedIPs, ['172.24.3.0/24', '10.3.0.0/16']);
+test('local devices become peers restricted to exactly one address', () => {
+	const plan = planReconcile(peersDoc(), clientsDoc([
+		{ uid: 'alice', name: 'laptop', publicKey: CLIENT_KEY(1), assignedIp: '10.2.128.1', exitSiteId: null },
+		{ uid: 'bob', name: 'phone', publicKey: CLIENT_KEY(2), assignedIp: '10.2.128.2', exitSiteId: 5 }
+	]), null);
+
+	const laptop = plan.peers.find((p) => p.label === 'alice/laptop');
+	// A /32 and nothing else: one compromised laptop must not be able to
+	// source traffic for another site's whole /16.
+	assert.deepStrictEqual(laptop.allowedIPs, ['10.2.128.1/32']);
+	assert.strictEqual(laptop.kind, 'client');
+	assert.strictEqual(laptop.endpoint, '');
+	assert.strictEqual(plan.peers.find((p) => p.label === 'bob/phone').exitSiteId, 5);
+});
+
+test('sites and devices share one interface without colliding', () => {
+	const plan = planReconcile(peersDoc(), clientsDoc([
+		{ uid: 'alice', name: 'laptop', publicKey: CLIENT_KEY(1), assignedIp: '10.2.128.1', exitSiteId: null }
+	]), null);
+
+	// A local client's /32 lives inside THIS site's /16, which is never
+	// allowed to any site peer -- so nothing overlaps and one interface is
+	// enough. (The hub's 10.0.0.0/8 does cover it, but longest-prefix match
+	// gives the /32 to the client.)
+	const allSitePrefixes = plan.peers.filter((p) => p.kind === 'site').flatMap((p) => p.allowedIPs);
+	assert.ok(!allSitePrefixes.includes('10.2.0.0/16'));
+	assert.strictEqual(plan.peers.length, 3);
+});
+
+test('the mesh routes get traffic into WireGuard at all', () => {
+	// `wg set allowed-ips` only configures crypto routing; without a kernel
+	// route nothing is ever handed to the interface. Learned the hard way.
+	const plan = planReconcile(peersDoc(), clientsDoc(), null);
+	assert.deepStrictEqual(plan.routes.map((r) => r.cidr), ['10.0.0.0/8', '172.24.0.0/16']);
+});
+
+test('LAN mappings are built only for shadows the site has configured', () => {
+	const plan = planReconcile(peersDoc(), clientsDoc(), { siteId: 2, lan168: '192.168.1.0/24' });
+	assert.deepStrictEqual(plan.netmaps, [{ slot: 168, shadow: '10.2.168.0/24', physical: '192.168.1.0/24' }]);
+});
+
+test('both shadow slots map when both LANs are configured', () => {
+	const plan = planReconcile(peersDoc(), clientsDoc(), { siteId: 2, lan168: '192.168.50.0/24', lan172: '172.16.0.0/24' });
+	assert.deepStrictEqual(plan.netmaps, [
+		{ slot: 168, shadow: '10.2.168.0/24', physical: '192.168.50.0/24' },
+		{ slot: 172, shadow: '10.2.172.0/24', physical: '172.16.0.0/24' }
+	]);
+});
+
+test('a site with no LAN configured maps nothing', () => {
+	assert.deepStrictEqual(planReconcile(peersDoc(), clientsDoc(), null).netmaps, []);
+	assert.deepStrictEqual(planReconcile(peersDoc(), clientsDoc(), { siteId: 2 }).netmaps, []);
+});
+
+test('a site id with no address space is refused loudly', () => {
+	assert.throws(() => planReconcile({ localSiteId: 300, peers: [] }, clientsDoc(), null), /site id must be an integer/);
+});
+
+test('missing client data is treated as no devices, not as an error', () => {
+	// The devices fetch can fail independently of the peers fetch; losing it
+	// must not tear down site-to-site tunnels.
+	const plan = planReconcile(peersDoc(), null, null);
+	assert.strictEqual(plan.ready, true);
+	assert.strictEqual(plan.peers.filter((p) => p.kind === 'client').length, 0);
+	assert.strictEqual(plan.peers.filter((p) => p.kind === 'site').length, 2);
 });

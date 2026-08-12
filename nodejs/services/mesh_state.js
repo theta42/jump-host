@@ -1,162 +1,250 @@
 'use strict';
 
-// The mesh CONTROL state: this gateway's WireGuard identity, its own mesh
-// index, and the job of making the live wg interface agree with the registry
-// in Redis.
+// Turning the directory's roster into a working router.
 //
-// This exists because the registry is durable and the interface is not. Peers
-// live in Redis (models/mesh_gateway.js); the wg-mesh interface lives in the
-// container's network namespace and is gone the moment the container
-// restarts. Nothing used to rebuild it -- ensureInterface/setPrivateKey/
-// setAddress/setPeer were only ever called from routes/mesh.js, i.e. only
-// while an admin was actively minting a token or joining. So after any
-// restart the mesh was silently down (registry full of peers, interface
-// absent) until someone re-ran a join by hand, and the only symptom was
-// mesh_forwarder logging EADDRNOTAVAIL on its ingress bind every 30s.
+// This gateway is authoritative for its own site's network and for nothing
+// else. It publishes the two facts only it knows -- its WireGuard public key
+// and the endpoint peers dial -- and reads everything else (which sites exist,
+// what this site's LAN and resolver are, which devices belong here, where each
+// one exits) from the directory. So all configuration happens in one UI, and
+// no gateway can rewrite another gateway's network.
 //
-// reconcileMesh() replays the registry onto the interface and is the single
-// place that knows how to do it -- called at boot (bin/www) and after every
-// mesh change, so the routes no longer hand-roll the same four calls in two
-// slightly different orders.
+// ONE interface carries both site peers and local client devices. Their
+// AllowedIPs cannot collide: a site peer is allowed 172.24.0.<n>/32 plus
+// 10.<n>.0.0/16 for OTHER sites, while a local client is a /32 inside THIS
+// site's /16, which is never allowed to any peer. WireGuard's longest-prefix
+// match sorts out the hub's 10.0.0.0/8 catch-all against both. Splitting them
+// would buy separate listen ports and nothing else.
+//
+// The interface is not persisted anywhere: it dies with a reboot and is
+// rebuilt from the roster at startup. That is deliberate -- there is one
+// source of truth and one code path that applies it, rather than a
+// wg0.conf on disk that drifts from what the directory says.
 
 const conf = require('@simpleworkjs/conf');
-const meshGateway = require('../models/mesh_gateway');
 const wgIface = require('../utils/wg_iface');
 const wgKeys = require('../utils/wg_keys');
-const { meshCidrFor, meshAllowedIpsFor } = require('../utils/mesh_addressing');
+const netRouter = require('../utils/net_router');
+const directory = require('./directory_client');
+const {
+	meshAddress, siteGatewayCidr, siteCidr, shadowCidr, SHADOW_SLOTS, assertSiteId
+} = require('../utils/mesh_addressing');
 
 const IFACE = process.env.THETA_MESH_IFACE || 'wg-mesh';
-const MESH_LISTEN_PORT = process.env.THETA_MESH_LISTEN_PORT || 51820;
+const LISTEN_PORT = Number(process.env.THETA_MESH_LISTEN_PORT || 51820);
 
-// Marks this gateway's own entry in the registry. Kept for display only --
-// never trusted for identity, see selfEntry().
-const SELF_SLUG = '(self)';
+// Where this gateway's own keypair lives. Generated once, then stable: every
+// peer in the cluster holds the public half, so regenerating it silently
+// breaks every tunnel until each peer is updated. Rotation is a deliberate,
+// cluster-wide operation and is not attempted here.
+const KEYPAIR_KEY = () => `${conf.redis.prefix}wg_gateway_keypair`;
 
-function localIdentity() {
-	// wg_bootstrap.js normally populates this at startup; generate on demand
-	// so the mesh routes still work in an environment where it hasn't run.
-	if (!conf.wireguard) conf.wireguard = {};
-	if (!conf.wireguard.serverPublicKey || !conf.wireguard.serverPrivateKey) {
-		const kp = wgKeys.generateKeypair();
-		conf.wireguard.serverPublicKey = kp.publicKey;
-		conf.wireguard.serverPrivateKey = kp.privateKey;
+async function localIdentity() {
+	const { getRedis } = require('../models/index');
+	const redis = await getRedis();
+	const stored = await redis.hGetAll(KEYPAIR_KEY());
+	if (stored && stored.publicKey && stored.privateKey) return stored;
+
+	const kp = wgKeys.generateKeypair();
+	const record = { publicKey: kp.publicKey, privateKey: kp.privateKey, createdAt: String(Date.now()) };
+	await redis.hSet(KEYPAIR_KEY(), record);
+	console.log('[mesh] generated this gateway\'s WireGuard identity');
+	return record;
+}
+
+/**
+ * The endpoint peers should dial to reach this gateway.
+ * Empty is legitimate -- a site with no inbound access still reaches the mesh
+ * outbound and is reached back through the hub.
+ */
+function localEndpoint() {
+	const explicit = process.env.THETA_MESH_ENDPOINT || (conf.wireguard && conf.wireguard.serverEndpoint);
+	if (explicit) return explicit;
+	const host = process.env.THETA_PUBLIC_HOST || (conf.domain || '');
+	return host ? `${host}:${LISTEN_PORT}` : '';
+}
+
+/**
+ * Decide the whole interface state from the roster. Pure -- no I/O -- so every
+ * rule below is testable without touching `wg`, `ip`, or `iptables`.
+ *
+ * @param {object} peersDoc   GET /api/mesh/peers
+ * @param {object} clientsDoc GET /api/mesh/site-clients
+ * @param {object} site       this site's own roster row (LAN, DNS, shadows)
+ */
+function planReconcile(peersDoc, clientsDoc, site) {
+	const siteId = peersDoc && peersDoc.localSiteId;
+	if (!siteId) {
+		return { ready: false, reason: 'this site has no id yet — it has not joined a directory', peers: [], addresses: [], routes: [], netmaps: [] };
 	}
-	return conf.wireguard;
+	assertSiteId(siteId);
+
+	// Two addresses: the mesh identity every other gateway knows us by, and
+	// this site's router address, which is what local clients and the site's
+	// own services use as their way onto the mesh.
+	const addresses = [meshAddress(siteId), siteGatewayCidr(siteId)];
+
+	const peers = [];
+	for (const peer of (peersDoc.peers || [])) {
+		if (!peer.publicKey || !peer.allowedIps || !peer.allowedIps.length) continue;
+		peers.push({
+			kind: 'site',
+			label: peer.slug || `site ${peer.siteId}`,
+			publicKey: peer.publicKey,
+			endpoint: peer.endpoint || '',
+			allowedIPs: peer.allowedIps,
+			// Only keepalive toward peers we dial; a peer with no endpoint is
+			// one that dials us, and keepalive would have nowhere to go.
+			keepalive: peer.endpoint ? 25 : 0
+		});
+	}
+
+	// Local devices. A client is a single /32 -- it must never be allowed to
+	// source traffic for anything but its own address, or one compromised
+	// laptop could claim another site's whole /16.
+	for (const client of ((clientsDoc && clientsDoc.clients) || [])) {
+		if (!client.publicKey || !client.assignedIp) continue;
+		peers.push({
+			kind: 'client',
+			label: `${client.uid}/${client.name}`,
+			publicKey: client.publicKey,
+			endpoint: '',
+			allowedIPs: [`${client.assignedIp}/32`],
+			keepalive: 0,
+			exitSiteId: client.exitSiteId === undefined ? null : client.exitSiteId
+		});
+	}
+
+	// The mesh as a whole goes down this interface. Per-peer AllowedIPs decide
+	// which tunnel each packet actually takes; these routes just get traffic
+	// into WireGuard in the first place.
+	const routes = [
+		{ cidr: '10.0.0.0/8', dev: IFACE },
+		{ cidr: '172.24.0.0/16', dev: IFACE }
+	];
+
+	// NETMAP: this site's physical LANs, mapped into shadow /24s so that every
+	// site's 192.168.1.0/24 is globally distinct.
+	const netmaps = [];
+	for (const slot of SHADOW_SLOTS) {
+		const physical = site && (slot === 168 ? site.lan168 : site.lan172);
+		if (!physical) continue;
+		netmaps.push({ slot, shadow: shadowCidr(siteId, slot), physical });
+	}
+
+	return { ready: true, siteId, addresses, peers, routes, netmaps, siteCidr: siteCidr(siteId) };
 }
 
-// Which registry entry is US. Matched on public key, NOT on siteSlug: the
-// slug arrives in the REMOTE's POST /register body, so a peer that registers
-// itself as '(self)' would otherwise be mistaken for this gateway -- enough
-// to make mesh_forwarder bind its ingress listener to the peer's mesh address
-// instead of ours, and to make that peer undeletable through
-// DELETE /api/mesh/gateways/:id. The keypair is ours alone and never crosses
-// the wire, so it is the only trustworthy discriminator.
-function selfEntry(gateways, publicKey) {
-	const key = publicKey || (conf.wireguard && conf.wireguard.serverPublicKey);
-	if (!key) return null;
-	return gateways.find((g) => g.publicKey === key) || null;
-}
-
-// This gateway's own mesh index is "the lowest free index, stable once
-// picked", stored as a self-entry in the same registry so it survives
-// restarts exactly the way peer entries do.
-async function ensureOwnMeshIndex(explicitMeshIndex) {
-	const self = localIdentity();
-	const existing = await meshGateway.findByPublicKey(self.serverPublicKey);
-	if (existing) return existing.meshIndex;
-	const created = await meshGateway.register({
-		publicKey: self.serverPublicKey,
-		endpoint: self.serverEndpoint || '',
-		siteSlug: SELF_SLUG,
-		meshIndex: explicitMeshIndex
-	});
-	return created.meshIndex;
-}
-
-function applyPeer(peer) {
-	wgIface.setPeer(IFACE, {
-		publicKey: peer.publicKey,
-		endpoint: peer.endpoint,
-		allowedIPs: meshAllowedIpsFor(Number(peer.meshIndex)),
-		keepalive: 25
-	});
-}
-
-// Bring the interface up and give it this gateway's key, port, and address.
-// Idempotent -- every call re-asserts the same state, which is what makes it
-// safe to run at boot AND after each mesh change.
-async function ensureInterfaceFor(ownMeshIndex) {
-	const self = localIdentity();
+/**
+ * Apply a plan to the live system. Idempotent at every step, because this runs
+ * at boot, after every roster change, and on a timer.
+ */
+async function applyPlan(plan, identity) {
 	await wgIface.ensureInterface(IFACE);
-	wgIface.setPrivateKey(IFACE, self.serverPrivateKey, MESH_LISTEN_PORT);
-	wgIface.setAddress(IFACE, meshCidrFor(Number(ownMeshIndex)));
-}
-
-/**
- * Decide what the interface SHOULD look like, given a registry snapshot.
- * Pure -- no I/O -- so the rules below are cheaply testable apart from the
- * `wg`/`ip` calls that carry them out (same split as utils/mesh_addressing).
- *
- * A gateway with no self-entry has never meshed with anyone: nothing to
- * rebuild, and no interface should be created, since an unmeshed gateway has
- * no business holding a WireGuard device open.
- *
- * @returns {{joined: boolean, meshIndex: number|null, address: string|null, peers: Array}}
- */
-function planReconcile(gateways, publicKey) {
-	const self = selfEntry(gateways, publicKey);
-	if (!self || !self.meshIndex) {
-		return { joined: false, meshIndex: null, address: null, peers: [] };
-	}
-
-	const peers = gateways
-		.filter((g) => g.id !== self.id)
-		// An entry missing either field cannot produce a valid peer -- it would
-		// throw inside assertValidIndex or be rejected by `wg` -- so drop it
-		// here rather than fail the whole reconcile over one bad row.
-		.filter((g) => g.publicKey && g.meshIndex)
-		.map((g) => ({
-			id: g.id,
-			siteSlug: g.siteSlug,
-			publicKey: g.publicKey,
-			endpoint: g.endpoint,
-			meshIndex: Number(g.meshIndex),
-			allowedIPs: meshAllowedIpsFor(Number(g.meshIndex))
-		}));
-
-	return { joined: true, meshIndex: self.meshIndex, address: meshCidrFor(Number(self.meshIndex)), peers };
-}
-
-/**
- * Rebuild the live wg-mesh interface from the registry.
- * @returns {{joined: boolean, meshIndex: number|null, peers: number, failed: Array}}
- */
-async function reconcileMesh() {
-	const plan = planReconcile(await meshGateway.list());
-	if (!plan.joined) return { joined: false, meshIndex: null, peers: 0, failed: [] };
-
-	await ensureInterfaceFor(plan.meshIndex);
+	wgIface.setPrivateKey(IFACE, identity.privateKey, LISTEN_PORT);
+	wgIface.setAddresses(IFACE, plan.addresses);
 
 	const failed = [];
-	let peers = 0;
+	const wanted = new Set();
 	for (const peer of plan.peers) {
-		// One bad entry must not stop the rest of the mesh coming back up.
+		wanted.add(peer.publicKey);
 		try {
-			applyPeer(peer);
-			peers++;
+			wgIface.setPeer(IFACE, peer);
 		} catch (err) {
-			failed.push({ id: peer.id, siteSlug: peer.siteSlug, error: err.message });
-			console.error(`[mesh] could not restore peer ${peer.siteSlug || peer.id}: ${err.message}`);
+			// One bad peer must not stop the rest of the mesh coming up.
+			failed.push({ label: peer.label, error: err.message });
+			console.error(`[mesh] could not apply peer ${peer.label}: ${err.message}`);
 		}
 	}
 
-	console.log(`[mesh] reconciled: site index ${plan.meshIndex}, ${peers} peer(s) applied` +
-		(failed.length ? `, ${failed.length} failed` : ''));
-	return { joined: true, meshIndex: plan.meshIndex, peers, failed };
+	// Anything on the interface that is no longer in the roster is gone --
+	// a removed site or a revoked device must stop being reachable now, not at
+	// the next restart.
+	for (const existing of wgIface.listPeers(IFACE)) {
+		if (!wanted.has(existing)) {
+			console.log(`[mesh] removing peer no longer in the roster: ${existing.slice(0, 12)}…`);
+			wgIface.removePeer(IFACE, existing);
+		}
+	}
+
+	for (const route of plan.routes) wgIface.ensureRoute(route.cidr, route.dev);
+
+	// Routing/NAT only makes sense once the interface exists, so it happens
+	// here rather than at boot.
+	const wan = netRouter.detectWanInterface();
+	netRouter.applySysctls([IFACE, wan].filter(Boolean));
+	netRouter.applyForwarding(wan, [IFACE]);
+	for (const map of plan.netmaps) {
+		try {
+			netRouter.applyNetmap(IFACE, map.shadow, map.physical);
+		} catch (err) {
+			failed.push({ label: `netmap ${map.shadow}`, error: err.message });
+			console.error(`[mesh] NETMAP ${map.shadow} -> ${map.physical} failed: ${err.message}`);
+		}
+	}
+
+	return { peers: plan.peers.length - failed.length, failed, wan };
+}
+
+/**
+ * Full cycle: publish who we are, pull what to build, build it.
+ *
+ * Publishing is best-effort. A gateway that cannot reach the directory must
+ * still configure itself from cache -- these are deployments where the
+ * directory may be a container on the same box that is being restarted, and
+ * tunnels must not drop because a web app is.
+ */
+async function reconcileMesh() {
+	const identity = await localIdentity();
+
+	try {
+		await directory.publishSelf({
+			gatewayPublicKey: identity.publicKey,
+			gatewayEndpoint: localEndpoint()
+		});
+	} catch (err) {
+		console.warn(`[mesh] could not publish this gateway's identity: ${err.message}`);
+	}
+
+	const peersRes = await directory.fetchPeers();
+	if (!peersRes.value) {
+		console.error(`[mesh] no peer config available (${peersRes.error}); leaving the interface untouched`);
+		return { ready: false, reason: peersRes.error, stale: true };
+	}
+	const clientsRes = await directory.fetchSiteClients();
+	const rosterRes = await directory.fetchRoster();
+	const site = rosterRes.value && (rosterRes.value.sites || []).find((s) => Number(s.siteId) === Number(peersRes.value.localSiteId));
+
+	const plan = planReconcile(peersRes.value, clientsRes.value, site);
+	if (!plan.ready) {
+		console.warn(`[mesh] not configuring: ${plan.reason}`);
+		return { ready: false, reason: plan.reason, stale: peersRes.stale };
+	}
+
+	const result = await applyPlan(plan, identity);
+	console.log(`[mesh] site ${plan.siteId}: ${result.peers} peer(s), ${plan.netmaps.length} NETMAP(s), WAN ${result.wan || 'none'}` +
+		(peersRes.stale ? ' (from cached config — directory unreachable)' : ''));
+	return { ready: true, siteId: plan.siteId, ...result, stale: peersRes.stale };
+}
+
+let timer = null;
+
+function startMeshReconcile({ intervalMs = 60000 } = {}) {
+	reconcileMesh().catch((err) => console.error('[mesh] initial reconcile failed:', err.message));
+	if (timer) clearInterval(timer);
+	timer = setInterval(() => {
+		reconcileMesh().catch((err) => console.error('[mesh] reconcile failed:', err.message));
+	}, intervalMs);
+	if (timer.unref) timer.unref();
+}
+
+function stopMeshReconcile() {
+	if (timer) clearInterval(timer);
+	timer = null;
 }
 
 module.exports = {
-	IFACE, MESH_LISTEN_PORT, SELF_SLUG,
-	localIdentity, selfEntry, ensureOwnMeshIndex,
-	ensureInterfaceFor, applyPeer, planReconcile, reconcileMesh
+	IFACE, LISTEN_PORT,
+	localIdentity, localEndpoint, planReconcile, applyPlan, reconcileMesh,
+	startMeshReconcile, stopMeshReconcile
 };

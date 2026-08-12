@@ -108,12 +108,64 @@ function setPrivateKey(name, privateKeyBase64, listenPort) {
 }
 
 function setAddress(name, cidr) {
-	// Flush first so re-applying (e.g. after a mesh index reassignment, which
-	// shouldn't normally happen but must not silently stack addresses if it
-	// does) leaves exactly one address, not an accumulating list.
-	tryRun('ip', ['addr', 'flush', 'dev', name]);
-	run('ip', ['addr', 'add', cidr, 'dev', name]);
+	setAddresses(name, [cidr]);
+}
+
+/**
+ * Give the interface exactly this set of addresses.
+ *
+ * A gateway carries two: its mesh identity (172.24.0.<s>/32) and its site
+ * router address (10.<s>.0.1/16). Reconciled as a SET rather than flushed and
+ * re-added, because flushing drops the addresses for an instant on every
+ * reconcile -- and reconcile runs on a timer, so that would be a periodic
+ * blip on a live router for no reason.
+ */
+function setAddresses(name, cidrs) {
+	const wanted = new Set(cidrs);
+	const shown = tryRun('ip', ['-o', '-4', 'addr', 'show', 'dev', name]);
+	const present = new Set();
+	if (shown.ok) {
+		for (const line of shown.out.split('\n')) {
+			const m = /\sinet\s+(\S+)/.exec(line);
+			if (m) present.add(m[1]);
+		}
+	}
+
+	for (const cidr of wanted) {
+		if (present.has(cidr)) continue;
+		const add = tryRun('ip', ['addr', 'add', cidr, 'dev', name]);
+		if (!add.ok && !/File exists/.test(add.err)) {
+			throw new Error(`failed to add ${cidr} to ${name}: ${add.err}`);
+		}
+	}
+	for (const cidr of present) {
+		if (!wanted.has(cidr)) tryRun('ip', ['addr', 'del', cidr, 'dev', name]);
+	}
+
 	run('ip', ['link', 'set', 'up', 'dev', name]);
+}
+
+/** Public keys of every peer currently on the interface. */
+function listPeers(name) {
+	const res = tryRun('wg', ['show', name, 'peers']);
+	if (!res.ok) return [];
+	return res.out.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
+/**
+ * Add a route if it is not already there. Separate from setPeer because the
+ * mesh-wide routes (10.0.0.0/8, 172.24.0.0/16) belong to the interface, not to
+ * any one peer -- WireGuard's own AllowedIPs decide which tunnel a packet
+ * takes once it has been routed in.
+ */
+function ensureRoute(cidr, dev) {
+	const existing = tryRun('ip', ['route', 'show', cidr, 'dev', dev]);
+	if (existing.ok && existing.out.trim()) return false;
+	const add = tryRun('ip', ['route', 'add', cidr, 'dev', dev]);
+	if (!add.ok && !/File exists/.test(add.err)) {
+		throw new Error(`failed to add route ${cidr} via ${dev}: ${add.err}`);
+	}
+	return add.ok;
 }
 
 // Apply (or update) one peer. Safe to call repeatedly for the same peer --
@@ -150,10 +202,9 @@ function setPeer(name, { publicKey, endpoint, allowedIPs, keepalive }) {
 // longer knows what to clean up, and nothing else tracks these routes,
 // since they were added by us directly, not by wg-quick).
 //
-// Safe to assume none of a peer's AllowedIPs collide with this gateway's
-// own local address range: mesh indexes are unique per gateway
-// (models/mesh_gateway.js's nextFreeMeshIndex), so a peer's
-// 172.24.<peerIndex>.0/24 can never equal our own 172.24.<ownIndex>.0/24.
+// Safe to assume none of a peer's AllowedIPs collide with this gateway's own
+// address range: site ids are allocated once, cluster-wide, by the directory
+// master, so a peer's 10.<peerId>.0.0/16 can never equal our own 10.<ourId>.0.0/16.
 function removePeer(name, publicKey) {
 	const show = tryRun('wg', ['show', name, 'allowed-ips']);
 	let allowedIPs = [];
@@ -210,6 +261,9 @@ module.exports = {
 	ensureInterface,
 	setPrivateKey,
 	setAddress,
+	setAddresses,
+	listPeers,
+	ensureRoute,
 	setPeer,
 	removePeer,
 	interfaceExists,

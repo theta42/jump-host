@@ -17,29 +17,20 @@ const { Server } = require('socket.io');
 // fallback and boot continues from ./config/jump-secrets.js.
 require('@simpleworkjs/bao-conf').init({ path: 'jump-host', conf }).then(async () => {
 	require('../models');
-	const { bootstrapWireguard } = require('../services/wg_bootstrap');
-	await bootstrapWireguard();
 	const { startMdnsAnnounce } = require('../services/mdns_announce');
 	await startMdnsAnnounce();
-	// Rebuild the wg-mesh interface from the peer registry. The registry is
-	// durable (Redis) but the interface is not -- it dies with the container --
-	// so without this a restart left the mesh silently down until an admin
-	// re-ran a join by hand. Fail-soft: a gateway that cannot bring WireGuard
-	// up (no NET_ADMIN, no kernel module and no wireguard-go) must still serve
-	// SSH and the web UI.
-	const { reconcileMesh } = require('../services/mesh_state');
-	try {
-		await reconcileMesh();
-	} catch (err) {
-		console.error('[mesh] could not restore the mesh interface at boot:', err.message);
-	}
 
-	// Bridges the mesh tunnel to this site's services in both directions.
-	// Starts after reconcileMesh so the interface already has its address;
-	// it re-reconciles on an interval regardless, since the peer set changes
-	// while the process is running.
-	const { startMeshForwarders } = require('../services/mesh_forwarder');
-	startMeshForwarders();
+	// Build the WireGuard interface, routes, NAT and NETMAP from the roster the
+	// directory holds, then keep them reconciled. The interface is not
+	// persisted anywhere -- it dies with a reboot and is rebuilt from the one
+	// source of truth, rather than from a wg0.conf on disk that would drift
+	// from what the directory says.
+	//
+	// Fail-soft throughout: a gateway that cannot configure WireGuard (no
+	// privileges, no kernel module and no wireguard-go) must still serve SSH
+	// and the web UI, which are the rest of its job.
+	const { startMeshReconcile } = require('../services/mesh_state');
+	startMeshReconcile();
 
 	const app = require('../app');
 	const middleware = require('../middleware/auth');
