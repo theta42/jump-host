@@ -149,6 +149,19 @@ save 60 10000
 EOF
 
 if systemctl list-unit-files 2>/dev/null | grep -q '^redis-server\.service'; then
+	# Point the distro unit at the gateway's config (custom dir, AOF on) rather
+	# than silently running the distro default: the config file written above
+	# is dead weight otherwise, and the gateway's identity/sessions/OAuth state
+	# would persist to the distro default path nobody documents or backs up.
+	# Keep systemd-supervised mode (Debian's stock unit uses it) so Redis does
+	# not daemonize on its own under systemd.
+	install -d -m 0755 /etc/systemd/system/redis-server.service.d
+	install -m 0644 /dev/stdin /etc/systemd/system/redis-server.service.d/theta-gateway.conf <<EOF
+[Service]
+ExecStart=
+ExecStart=/usr/bin/redis-server /etc/redis/theta-gateway.conf --supervised systemd --daemonize no
+EOF
+	systemctl daemon-reload >/dev/null 2>&1 || true
 	systemctl enable --now redis-server >/dev/null 2>&1 || true
 else
 	warn "no redis-server unit found — start Redis yourself on 127.0.0.1:6379"

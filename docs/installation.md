@@ -1,13 +1,14 @@
 ---
 layout: default
 title: Installation
-description: Install the jump host three ways — bundled in the theta-env stack, standalone Docker, or bare metal — plus standalone mode (no LDAP/SSO), the LDAP write-ACL, and port-22 options.
+description: Install the gateway on the host — bundled in the theta-suite stack or direct install.sh — plus standalone mode (no LDAP/SSO), the LDAP write-ACL, and port-22 options.
 ---
 
 # Installation
 
-Three ways to run the jump host, in increasing manual effort. All read their
-config through [@simpleworkjs/conf](https://www.npmjs.com/package/@simpleworkjs/conf)
+The gateway installs on the **host**, not in a container (it is a router).
+All paths read their config through
+[@simpleworkjs/conf](https://www.npmjs.com/package/@simpleworkjs/conf)
 (`conf/base.js` < `conf/<NODE_ENV>.js` < the `CONF_SECRETS` file < `app_*` env).
 
 ## Standalone mode (no LDAP/SSO) {#standalone-mode}
@@ -51,9 +52,8 @@ Every host in the standalone inventory is reachable by every standalone user —
 there's no group-based authorization yet (`groups` on `StandaloneUser` is
 accepted for interface parity with the LDAP path, not enforced).
 
-The rest of this page (requirements, the LDAP write-ACL, the three install
-paths) describes the default LDAP + SSO mode — skip it if you're running
-standalone.
+The rest of this page (requirements, the LDAP write-ACL, the install paths)
+describes the default LDAP + SSO mode — skip it if you're running standalone.
 
 ## Requirements
 
@@ -66,46 +66,50 @@ standalone.
   user entries (see below).
 - An SSO API token (`sso_…`) for the directory queries.
 
-## 1. Unified theta-env stack (recommended)
+## 1. Unified theta-suite stack (recommended)
 
-Enable it in `theta-env/setup.env`:
+`theta-suite`'s `setup.sh` installs and configures the gateway for you. Set in
+`setup.env`:
 
 ```bash
-CFG_JUMP_HOST_ENABLED=true
 CFG_JUMP_HOST=jump.example.com
 JUMP_SSH_PORT=2222
 ```
 
-Re-run `./setup.sh`. The stack builds the submodule (behind the `jump-host`
-compose profile), mints the directory API token, writes
-`./config/jump-secrets.js`, grants the `sshPublicKey` write-ACL, registers the
-jump host in the proxy, and seeds a directory entry. Forward the public host's
-`:22` (or `:2222`) to the container's published `JUMP_SSH_PORT`.
+Re-run `./setup.sh`. It writes `./config/jump-secrets.js`, mints the directory
+API token, grants the `sshPublicKey` write-ACL, copies the secrets file to
+`/etc/theta-gateway/jump-secrets.js`, runs `jump-host/install.sh` (systemd
+`theta-gateway.service`), registers the web UI hostname in the proxy, and seeds
+a directory entry.
 
-## 2. Standalone Docker
+## 2. Direct install
+
+```bash
+sudo ./install.sh                    # install or upgrade in place (idempotent)
+sudo ./install.sh --uninstall        # remove the service (keeps config + data)
+```
+
+`install.sh` installs dependencies (Redis, iproute2, iptables, wireguard-tools)
+and Node >= 20.14, lays the app down at `/opt/theta-gateway`, writes
+`/etc/theta-gateway/gateway.env` (created once, never clobbered on upgrade),
+installs a systemd drop-in so `redis-server` runs the loopback-bound
+`/etc/redis/theta-gateway.conf` (data at `/var/lib/theta-gateway/redis`), and
+enables the unit. The SSH-port conflict check fails loudly up front rather
+than "succeeding" and leaving you locked out.
+
+For the full stack you also need `/etc/theta-gateway/jump-secrets.js` (LDAP
+bind + SSO token + OIDC client) — `setup.sh` writes it, or seed it from
+`secrets.js.example`.
+
+## 3. Standalone Docker
+
+For development only (the gateway cannot route from inside a container):
 
 ```bash
 cp secrets.js.example config/jump-secrets.js
 $EDITOR config/jump-secrets.js        # LDAP bind (+ sshPublicKey write ACL), SSO url + token
 docker compose up -d --build
 ```
-
-Host keys persist in the `jump-data` volume. The web UI is on `:3002`; front it
-with your own TLS/proxy.
-
-## 3. Bare metal
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/theta42/jump-host/master/ops/install.sh | sudo bash
-sudo $EDITOR /etc/jump-host/secrets.js
-sudo systemctl restart jump-host
-journalctl -u jump-host -f
-```
-
-`ops/install.sh` installs Node 22 + Redis, hard-resets the checkout at
-`/opt/theta42/jump-host` to the remote branch, symlinks the systemd unit, and
-runs `npm ci`. Idempotent — re-run to update. Overridable via `REPO_DIR=`,
-`BRANCH=`, `SECRETS_FILE=`.
 
 ## The LDAP write-ACL (required)
 
@@ -127,10 +131,9 @@ every bridge attempt is audited `key-inject-failed`.
 ## Listening on port 22
 
 The default SSH port is **2222** so the service needs no privilege. To listen on
-22, set `ssh.listenPort: 22` and either:
+22, set `JUMP_SSH_PORT=22` in `/etc/theta-gateway/gateway.env` and either:
 
-- **systemd:** uncomment `AmbientCapabilities=CAP_NET_BIND_SERVICE` in the unit;
-- **Docker:** publish `22:22`; or
+- **systemd:** add `AmbientCapabilities=CAP_NET_BIND_SERVICE` to the unit; or
 - **firewall:** DNAT `22 → 2222`.
 
 ## Configuration reference
@@ -151,5 +154,5 @@ sftp -P 2222 youruid_-_somehost@jump.example.com   # WinSCP path
 curl -s http://localhost:3002/health
 ```
 
-Watch `journalctl -u jump-host -f` (or `docker logs -f jump-host`) and the audit
-log at `/audit` in the web UI.
+Watch `journalctl -u theta-gateway -f` and the audit log at `/audit` in the web
+UI.
