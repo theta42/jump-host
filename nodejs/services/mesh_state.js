@@ -211,7 +211,17 @@ async function applyPlan(plan, identity) {
 	// here rather than at boot.
 	const wan = netRouter.detectWanInterface();
 	netRouter.applySysctls([IFACE, wan].filter(Boolean));
-	netRouter.applyForwarding(wan, [IFACE]);
+	// Guarded: this was the one unguarded call here, and when iptables was
+	// absent it threw mid-reconcile -- so the NETMAP loop below never ran, this
+	// function never returned, and applyExits (which the caller runs after it)
+	// was never reached. Peers came up and everything downstream of here
+	// silently did not.
+	try {
+		netRouter.applyForwarding(wan, [IFACE]);
+	} catch (err) {
+		failed.push({ label: 'forwarding/NAT', error: err.message });
+		console.error(`[mesh] could not configure forwarding: ${err.message}`);
+	}
 	for (const map of plan.netmaps) {
 		try {
 			netRouter.applyNetmap(IFACE, map.shadow, map.physical);

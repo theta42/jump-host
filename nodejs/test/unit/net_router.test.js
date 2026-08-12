@@ -41,7 +41,15 @@ Module.prototype.require = function (id) {
 const netRouter = require('../../utils/net_router');
 Module.prototype.require = originalRequire;
 
-beforeEach(() => { calls.length = 0; responses = {}; });
+beforeEach(() => {
+	calls.length = 0;
+	responses = {};
+	netRouter._resetToolCache();
+});
+
+// ENOENT: the binary is not installed. Simulates a gateway running somewhere
+// without iptables -- which is not broken, only limited.
+const missing = () => Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' });
 
 const issued = (fragment) => calls.filter((c) => c.includes(fragment));
 
@@ -130,6 +138,35 @@ test('removing a mapping tears down every rule it added', () => {
 	assert.ok(issued('-D PREROUTING -i wg-mesh -d 10.2.168.0/24').length);
 	assert.ok(issued('-D POSTROUTING -o wg-mesh -s 192.168.1.0/24').length);
 	assert.ok(issued('ip route del local 10.2.168.0/24 dev lo').length);
+});
+
+// This is the failure that shipped: applyForwarding threw when iptables was
+// absent, and the caller did not guard it, so everything after it -- NETMAP
+// and the whole exit configuration -- was silently skipped.
+test('a missing iptables reports a limitation instead of throwing', () => {
+	responses['iptables --version'] = missing();
+	responses['sysctl --version'] = missing();
+
+	const res = netRouter.applyForwarding('enp3s0', ['wg-mesh']);
+	assert.strictEqual(res.skipped, 'iptables not available');
+	assert.deepStrictEqual(netRouter.missingTools(), ['iptables', 'sysctl']);
+	// And it must not have tried to add anything.
+	assert.strictEqual(issued('-A POSTROUTING').length, 0);
+});
+
+test('NETMAP reports unavailable rather than throwing when iptables is absent', () => {
+	responses['iptables --version'] = missing();
+	assert.doesNotThrow(() => netRouter.applyNetmap('wg-mesh', '10.2.168.0/24', '192.168.1.0/24'));
+	assert.strictEqual(netRouter.netmapAvailable(), false);
+});
+
+// The knobs are just files, so a missing binary is not the end of it -- but a
+// read-only /proc/sys (every default container) is.
+test('sysctls fall back to writing /proc/sys when the binary is missing', () => {
+	responses['sysctl --version'] = missing();
+	responses['sysctl -w net.ipv4.ip_forward=1'] = missing();
+	netRouter.applySysctls([]);
+	assert.ok(issued('/proc/sys/net/ipv4/ip_forward').length, 'expected a direct /proc/sys write');
 });
 
 test('the uplink is detected from the default route', () => {

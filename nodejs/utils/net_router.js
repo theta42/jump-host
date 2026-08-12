@@ -21,14 +21,43 @@ function run(cmd, args) {
 
 function tryRun(cmd, args) {
 	try { return { ok: true, out: run(cmd, args) }; }
-	catch (e) { return { ok: false, err: (e.stderr || e.message || '').toString() }; }
+	catch (e) {
+		return {
+			ok: false,
+			err: (e.stderr || e.message || '').toString(),
+			// ENOENT means the binary is not installed at all, which is a
+			// different problem from a rule being rejected and deserves a
+			// different answer -- see missingTools().
+			missing: e.code === 'ENOENT'
+		};
+	}
 }
+
+// Tools this module needs but cannot assume. A gateway running somewhere
+// without them is not broken, it is LIMITED: it can still hold tunnels and
+// route between sites, and saying so beats throwing halfway through a
+// reconcile and skipping everything after it.
+const TOOLS = ['iptables', 'sysctl'];
+let toolCache = null;
+
+function missingTools() {
+	if (toolCache) return toolCache;
+	toolCache = TOOLS.filter((tool) => tryRun(tool, ['--version']).missing);
+	if (toolCache.length) {
+		console.warn(`[router] ${toolCache.join(' and ')} not available — NAT, forwarding and LAN mapping cannot be configured here. ` +
+			'The mesh and device tunnels still work; everything that touches the host network does not.');
+	}
+	return toolCache;
+}
+
+function haveIptables() { return !missingTools().includes('iptables'); }
 
 /**
  * Add an iptables rule only if an identical one is not already present.
  * `-C` is the check form; it exits non-zero when the rule is absent.
  */
 function ensureRule(table, chain, rule, { append = true } = {}) {
+	if (!haveIptables()) return false;
 	const base = ['-t', table];
 	const check = tryRun('iptables', [...base, '-C', chain, ...rule]);
 	if (check.ok) return false;
@@ -38,6 +67,7 @@ function ensureRule(table, chain, rule, { append = true } = {}) {
 }
 
 function removeRule(table, chain, rule) {
+	if (!haveIptables()) return 0;
 	const base = ['-t', table];
 	// Delete repeatedly: an older build without the -C guard may have stacked
 	// duplicates, and leaving one behind would keep NETMAPping a range the
@@ -71,11 +101,17 @@ function applySysctls(interfaces = []) {
 	}
 	const applied = [];
 	for (const [key, value] of settings) {
-		const res = tryRun('sysctl', ['-w', `${key}=${value}`]);
+		let res = tryRun('sysctl', ['-w', `${key}=${value}`]);
+		if (!res.ok && res.missing) {
+			// No sysctl binary: the knobs are still just files. This also fails
+			// where /proc/sys is mounted read-only (every default Docker
+			// container), which is worth distinguishing from "not installed".
+			res = tryRun('sh', ['-c', `echo ${value} > /proc/sys/${key.replace(/\./g, '/')}`]);
+		}
 		// A per-interface knob for an interface that does not exist yet is not
 		// an error worth failing a reconcile over; the next pass will set it.
 		if (res.ok) applied.push(key);
-		else console.warn(`[router] could not set ${key}: ${res.err.trim()}`);
+		else console.warn(`[router] could not set ${key}: ${(res.err || '').trim()}`);
 	}
 	return applied;
 }
@@ -88,6 +124,7 @@ function applySysctls(interfaces = []) {
  * @param {string[]} tunnels wg interfaces whose traffic may be forwarded out
  */
 function applyForwarding(wanIface, tunnels = []) {
+	if (!haveIptables()) return { changed: 0, skipped: 'iptables not available' };
 	if (!wanIface) return { changed: 0, skipped: 'no WAN interface' };
 	let changed = 0;
 
@@ -122,6 +159,7 @@ function applyForwarding(wanIface, tunnels = []) {
  * nothing on the host claims those addresses.
  */
 function applyNetmap(wgIface, shadowCidrValue, physicalCidr) {
+	if (!haveIptables()) return { changed: 0, skipped: 'iptables not available' };
 	if (!wgIface || !shadowCidrValue || !physicalCidr) return { changed: 0 };
 	let changed = 0;
 
@@ -169,6 +207,7 @@ function detectWanInterface() {
 
 /** Does this kernel have the NETMAP target available? */
 function netmapAvailable() {
+	if (!haveIptables()) return false;
 	// -C against a chain that does not exist still parses the target, so a
 	// "No chain/target/match" error distinguishes "NETMAP missing" from
 	// "rule absent".
@@ -179,5 +218,6 @@ function netmapAvailable() {
 
 module.exports = {
 	applySysctls, applyForwarding, applyNetmap, removeNetmap,
-	detectWanInterface, netmapAvailable, ensureRule, removeRule, _run: run, _tryRun: tryRun
+	detectWanInterface, netmapAvailable, missingTools, ensureRule, removeRule,
+	_run: run, _tryRun: tryRun, _resetToolCache: () => { toolCache = null; }
 };
