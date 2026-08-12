@@ -1,3 +1,10 @@
+## v3.1.6
+
+- chore: picks up `@simpleworkjs/frontend` 0.3.1 (filtered rows carrying a
+  Bootstrap display utility are actually hidden; the filter count no longer goes
+  stale). No view here uses the filter layer yet, so this is a dependency
+  alignment rather than a behaviour change.
+
 ## v3.1.5
 - feat: the shared UI shell loads `app.sync.js` and `app.filter.js` from `@simpleworkjs/frontend`, so views here can adopt the same live-update and filtering layers as the other apps.
 - chore: removed the client-side publish forwarding from `app-base.js`. It echoed every local publish back over the socket for the server to fan out. This app attaches socket.io only to serve the client library, so unlike proxy and theta-directory there was no bridge to secure — but the code was dead weight, and its twin in the other two apps was a topic-injection path.
