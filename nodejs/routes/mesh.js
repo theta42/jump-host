@@ -100,7 +100,11 @@ router.get('/status', middleware.auth, middleware.requireJumpAdmin, async (req, 
 				exitProblems: exitPlan.unusable
 			},
 			live,
-			exitLive: exitRouter.exitStatus()
+			exitLive: exitRouter.exitStatus(),
+			// Read back from the kernel, not from the plan: an installed rule
+			// and an intended one are different claims, and only the first
+			// routes a packet.
+			exitRulesLive: exitRouter.listManagedRules()
 		});
 	} catch (e) { next(e); }
 });

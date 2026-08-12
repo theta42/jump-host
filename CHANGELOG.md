@@ -1,3 +1,17 @@
+## v3.1.2
+
+- fix: **exit routing rules now read back in the form they were added.** The
+  kernel drops the prefix on a host rule — one added as
+  `from 10.2.128.1/32` prints as `from 10.2.128.1` — so anything comparing the
+  installed rules against the intended ones saw a mismatch that was not there.
+- test: **the end-to-end suite checks that exits are APPLIED, not planned.**
+  Its exit assertions read `planned.exits` and `planned.exitRules` — the
+  planner's output — which is why they passed happily while `applyExits` was
+  never being reached at all. They now read the live WireGuard device and the
+  kernel's own routing rules, via a new `exitRulesLive` on
+  `GET /api/mesh/status`, and assert the exit tunnel completed its own
+  handshake under the separate exit key.
+
 ## v3.1.1
 
 - fix: **install Node instead of refusing to start without it.** The gateway

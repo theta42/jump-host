@@ -144,16 +144,50 @@ async function main() {
 		!!device && device.allowedIPs.length === 1 && device.allowedIPs[0] === '10.2.128.1/32',
 		JSON.stringify(device && device.allowedIPs));
 
-	// Its exit is a separate interface with the default route on it -- the
-	// arrangement that makes exit selection expressible at all.
-	const exits = office.planned.exits || [];
-	check('the device exit built its own interface', exits.length === 1 && exits[0].iface === 'wg-exit-1',
-		JSON.stringify(exits.map((e) => e.iface)));
-	check('the exit is selected by a rule naming the device',
-		(office.planned.exitRules || []).some((r) => r.from === '10.2.128.1/32'),
-		JSON.stringify(office.planned.exitRules));
 	check('no exit is unbuildable', (office.planned.exitProblems || []).length === 0,
 		JSON.stringify(office.planned.exitProblems));
+
+	// ── exits, read back from the kernel ────────────────────────────────────
+	//
+	// These used to assert planned.exits and planned.exitRules -- the PLANNER'S
+	// OUTPUT -- which is why they passed while exits were never applied at all.
+	// applyForwarding threw on a missing iptables, applyPlan never returned,
+	// and applyExits was never reached; the plan was correct the whole time.
+	// An intended rule and an installed one are different claims, and only the
+	// second routes a packet.
+	// Waits for the tunnel to be UP, not merely configured. An exit interface
+	// exists the instant it is created; whether the far side accepts its key is
+	// the actual question, and a handshake is the only honest answer.
+	await waitFor('the exit interface, its rule, and its handshake', async () => {
+		states[2] = await status(GATEWAYS[1]);
+		const live = states[2].exitLive || {};
+		const rules = states[2].exitRulesLive || [];
+		if (!live['1'] || !rules.some((r) => r.from === '10.2.128.1/32')) return false;
+		const peers = Object.values(live['1'].peers || {});
+		return peers.length === 1 && peers[0].latestHandshake > 0;
+	}, 120000);
+
+	const officeExitLive = states[2].exitLive || {};
+	const officeRulesLive = states[2].exitRulesLive || [];
+
+	check('the exit interface exists on the box',
+		!!officeExitLive['1'] && officeExitLive['1'].iface === 'wg-exit-1',
+		JSON.stringify(Object.keys(officeExitLive)));
+
+	const installedRule = officeRulesLive.find((r) => r.from === '10.2.128.1/32');
+	check('a routing rule steering that device is installed in the kernel',
+		!!installedRule, JSON.stringify(officeRulesLive));
+	check('the rule points at the exit table for site 1',
+		!!installedRule && Number(installedRule.table) === 2401,
+		installedRule && installedRule.table);
+
+	// The exit tunnel is a SECOND tunnel to the same gateway, under a different
+	// key. A handshake here proves the exit site accepted the exit key -- the
+	// thing that was broken when both interfaces shared one identity.
+	const exitPeers = officeExitLive['1'] ? Object.values(officeExitLive['1'].peers || {}) : [];
+	check('the exit tunnel completed its own handshake',
+		exitPeers.length === 1 && exitPeers[0].latestHandshake > 0,
+		JSON.stringify(exitPeers));
 
 	// NETMAP: both sites are 192.168.1.0/24 and must be distinguishable.
 	for (const siteId of [2, 3]) {

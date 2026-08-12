@@ -13,6 +13,20 @@ const assert = require('node:assert');
 
 const { planExits, ifaceFor, tableFor, TABLE_BASE, RULE_PRIORITY_BASE } = require('../../services/exit_router');
 
+// Parsing `ip rule show` back into structured rules is what lets a test assert
+// that a rule is INSTALLED rather than merely planned -- the distinction that
+// let a completely unapplied exit configuration pass the end-to-end suite.
+const RULE_OUTPUT = [
+	'0:\tfrom all lookup local',
+	// The kernel prints a /32 rule WITHOUT the prefix -- exactly as `ip rule
+	// show` returns it, which is what made an otherwise-correct end-to-end
+	// assertion fail.
+	`${RULE_PRIORITY_BASE + 1}:\tfrom 10.2.128.1 lookup ${TABLE_BASE + 1}`,
+	`${RULE_PRIORITY_BASE + 5}:\tfrom 10.2.128.9/32 lookup ${TABLE_BASE + 5}`,
+	'32766:\tfrom all lookup main',
+	'100:\tfrom 192.168.1.0/24 lookup 99'
+].join('\n');
+
 const site = (id, over = {}) => ({
 	siteId: id, slug: `site-${id}`,
 	gatewayPublicKey: `key-${id}`.padEnd(44, 'x'),
@@ -127,4 +141,24 @@ test('no devices means no exit configuration at all', () => {
 	assert.deepStrictEqual(plan.exits, []);
 	assert.deepStrictEqual(plan.rules, []);
 	assert.deepStrictEqual(plan.unusable, []);
+});
+
+test('managed rules are read back from the kernel, ignoring everyone else\'s', () => {
+	const exitRouter = require('../../services/exit_router');
+	const netRouter = require('../../utils/net_router');
+	const original = netRouter._tryRun;
+	// listManagedRules goes through net_router's runner; stub just that.
+	require('../../utils/net_router')._tryRun = () => ({ ok: true, out: RULE_OUTPUT });
+	try {
+		const rules = exitRouter.listManagedRules();
+		// Normalised back to the form they were added in.
+		assert.deepStrictEqual(rules.map((r) => r.from), ['10.2.128.1/32', '10.2.128.9/32']);
+		assert.strictEqual(Number(rules[0].table), TABLE_BASE + 1);
+		// The kernel's own rules and an operator's rule at priority 100 are not
+		// ours to report or to delete.
+		assert.ok(!rules.some((r) => r.from === 'all'));
+		assert.ok(!rules.some((r) => r.from === '192.168.1.0/24'));
+	} finally {
+		require('../../utils/net_router')._tryRun = original;
+	}
 });

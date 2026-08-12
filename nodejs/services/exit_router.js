@@ -197,7 +197,35 @@ function clearManagedRules() {
 	return removed;
 }
 
-/** Live state for the UI: which exit interfaces exist and their handshakes. */
+/**
+ * The policy-routing rules this module currently owns, read back from the
+ * kernel. Identified by the priority range, so an operator's own rules are
+ * never reported as ours.
+ *
+ * Exists because "the rule was planned" and "the rule is installed" are
+ * different claims, and only the second one routes a packet.
+ */
+function listManagedRules() {
+	const res = run('ip', ['-o', 'rule', 'show']);
+	if (!res.ok) return [];
+	const rules = [];
+	for (const line of res.out.split('\n')) {
+		const m = /^(\d+):\s+from\s+(\S+)\s+lookup\s+(\S+)/.exec(line.trim());
+		if (!m) continue;
+		const priority = Number(m[1]);
+		if (priority < RULE_PRIORITY_BASE || priority > RULE_PRIORITY_BASE + 254) continue;
+		// The kernel drops a /32 on readback: a rule added as
+		// `from 10.2.128.1/32` prints as `from 10.2.128.1`. Normalise it back so
+		// a caller can compare what it asked for against what is installed
+		// without knowing that quirk.
+		const from = /^\d{1,3}(\.\d{1,3}){3}$/.test(m[2]) ? `${m[2]}/32` : m[2];
+		rules.push({ priority, from, table: m[3] });
+	}
+	return rules;
+}
+
+/** Live state for the UI: which exit interfaces exist, their handshakes, and
+ * which devices are actually steered to them right now. */
 function exitStatus() {
 	const out = {};
 	for (const [siteId, iface] of listExitInterfaces()) {
@@ -207,6 +235,6 @@ function exitStatus() {
 }
 
 module.exports = {
-	planExits, applyExits, clearManagedRules, listExitInterfaces, exitStatus,
+	planExits, applyExits, clearManagedRules, listExitInterfaces, listManagedRules, exitStatus,
 	ifaceFor, tableFor, TABLE_BASE, RULE_PRIORITY_BASE
 };
