@@ -1,3 +1,14 @@
+## v3.1.1
+
+- fix: **install Node instead of refusing to start without it.** The gateway
+  used to run in a container carrying its own runtime, so a host never needed
+  one; running on the host means it does, and v3.1.0 stopped with "node is
+  required" partway through a setup that had already brought the rest of the
+  stack up. It now installs Node 22 from NodeSource on apt hosts (Debian and
+  Ubuntu ship 18, below the engines floor, so the distro package is not an
+  option). `THETA_SKIP_NODE_INSTALL=1` to manage the runtime yourself.
+  Verified from nothing on a bare `debian:bookworm-slim`.
+
 ## v3.1.0
 
 The gateway installs on the **host** now, not in a container.

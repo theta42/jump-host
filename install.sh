@@ -77,9 +77,31 @@ if ! command -v wireguard-go >/dev/null && ! modinfo wireguard >/dev/null 2>&1; 
 	warn "no in-kernel WireGuard and no wireguard-go — the gateway cannot create interfaces"
 fi
 
-command -v node >/dev/null || die "node is required (>= 20.14). Install it, then re-run."
-NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-(( NODE_MAJOR >= 20 )) || die "node >= 20.14 required, found $(node -v)"
+# Node. The gateway used to run in a container carrying its own runtime, so a
+# host never needed one; running on the host means it does. Install it rather
+# than stopping, since "install node yourself" is a poor place to end a setup
+# that has already brought the rest of the stack up.
+node_major() { node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0; }
+
+if ! command -v node >/dev/null || (( $(node_major) < 20 )); then
+	FOUND="$(command -v node >/dev/null && node -v || echo 'none')"
+	if [[ "${THETA_SKIP_NODE_INSTALL:-}" == "1" ]]; then
+		die "node >= 20.14 required (found $FOUND) and THETA_SKIP_NODE_INSTALL=1"
+	fi
+	if command -v apt-get >/dev/null && command -v curl >/dev/null; then
+		info "Installing Node.js 22 from NodeSource (found: $FOUND)..."
+		# Debian/Ubuntu ship Node 18, which is below the engines floor, so the
+		# distro package is not an option here. Set THETA_SKIP_NODE_INSTALL=1 to
+		# manage the runtime yourself.
+		curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null 2>&1 \
+			|| die "could not add the NodeSource repository — install node >= 20.14 yourself, then re-run"
+		DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs >/dev/null \
+			|| die "installing nodejs failed — install node >= 20.14 yourself, then re-run"
+	else
+		die "node >= 20.14 required (found $FOUND). Install it, then re-run."
+	fi
+fi
+(( $(node_major) >= 20 )) || die "node >= 20.14 required, found $(node -v)"
 
 # ── the one conflict worth checking up front ─────────────────────────────────
 # The gateway's SSH front door must not collide with the host's own sshd, or
