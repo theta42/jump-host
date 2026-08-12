@@ -1,0 +1,48 @@
+[Unit]
+Description=Theta Gateway — SSH access gateway and site router
+Documentation=https://theta42.github.io/theta-suite/jump-host/
+# The gateway reads its configuration from the directory and reaches OpenBao
+# and the directory over loopback, so it wants the network up and, on a
+# single-box install, docker started. Neither is a hard dependency: it caches
+# the last known good configuration and keeps routing without them.
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Root, deliberately. This process creates WireGuard interfaces, writes the
+# routing table, sets net.* sysctls in the host namespace and installs NAT and
+# NETMAP rules. Every one of those needs CAP_NET_ADMIN in the init namespace,
+# and sysctl writes there are effectively root-only -- so a capability-scoped
+# unprivileged user buys ambiguity rather than safety. It is a router; routers
+# run as root.
+User=root
+WorkingDirectory=/opt/theta-gateway/nodejs
+Environment=NODE_ENV=production
+EnvironmentFile=-/etc/theta-gateway/gateway.env
+ExecStart=/usr/bin/node /opt/theta-gateway/nodejs/bin/www
+
+Restart=always
+RestartSec=5
+# A gateway that cannot reach the directory retries rather than exits, so
+# repeated fast restarts mean something genuinely wrong. Do not let systemd
+# give up on a router.
+StartLimitIntervalSec=0
+
+# Journal, so `journalctl -u theta-gateway` is the one place to look.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=theta-gateway
+
+# Modest hardening. Deliberately NOT sandboxing the network or /proc/sys:
+# ProtectKernelTunables or PrivateNetwork would break exactly the routing this
+# service exists to do, which is the trap that makes people give up on
+# hardening entirely.
+NoNewPrivileges=false
+ProtectHome=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/theta-gateway /etc/theta-gateway /run
+
+[Install]
+WantedBy=multi-user.target

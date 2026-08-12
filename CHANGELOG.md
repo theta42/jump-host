@@ -1,3 +1,32 @@
+## v3.1.0
+
+The gateway installs on the **host** now, not in a container.
+
+- feat: **`install.sh` + a systemd unit.** Installs dependencies, lays the app
+  down in `/opt/theta-gateway`, writes `/etc/theta-gateway/gateway.env`, binds
+  Redis to loopback, and enables the `theta-gateway` service. Idempotent, so
+  re-running upgrades in place; `--uninstall` deliberately keeps
+  `/var/lib/theta-gateway`, since that holds this gateway's WireGuard identity
+  and every peer in the cluster has its public half.
+  - Refuses to start if the SSH port collides with the host's own `sshd`,
+    rather than "succeeding" and leaving the operator locked out.
+  - Runs as root: creating WireGuard interfaces, writing the routing table,
+    setting `net.*` sysctls in the init namespace and installing NAT/NETMAP
+    rules all need `CAP_NET_ADMIN` there, and sysctl writes are effectively
+    root-only. A capability-scoped user buys ambiguity, not safety.
+- fix: **the router threw instead of degrading, and it cost the exits.** The
+  container image shipped without `iptables` or `procps`, and `/proc/sys` is
+  read-only in a default container — so every NAT, forwarding and NETMAP call
+  failed. `applyForwarding` was the one unguarded call in `applyPlan`, so it
+  threw mid-reconcile: the NETMAP loop never ran, `applyPlan` never returned,
+  and `applyExits` was never reached. Exits were planned and silently never
+  applied. `net_router` now detects missing tooling once, says what that costs,
+  and configures everything it still can; sysctls fall back to writing
+  `/proc/sys` directly when the binary is absent.
+- The mesh, device tunnels and site-to-site routing always worked in a
+  container. What did not was everything touching the host network — which is
+  most of what a router does.
+
 ## v3.0.0
 
 **Breaking.** The gateway no longer holds any network configuration of its own.
