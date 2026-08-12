@@ -293,6 +293,7 @@ async function reconcileMesh() {
 }
 
 let timer = null;
+let inFlight = null;
 
 // How often the gateway re-reads the directory and re-applies. A peer that
 // publishes after this gateway's last pass becomes usable on the next one, so
@@ -301,11 +302,27 @@ let timer = null;
 // on a tick.
 const RECONCILE_INTERVAL_MS = Number(process.env.THETA_MESH_RECONCILE_MS || 60000);
 
+// Serialize reconciles. A pass dials the directory three times (10s timeout
+// each) then re-applies wg/ip/iptables -- it can legitimately outlive the
+// interval and overlap the next tick, and two concurrent passes racing the
+// same ip rule / wg set / iptables chain is exactly the kind of interleaving
+// that stacks duplicate rules or drops one mid-flight. The interval tick that
+// finds a pass still running just skips: the next tick after it finishes picks
+// up whatever changed in the meantime, so nothing is lost, only delayed.
+function runReconcile() {
+	if (inFlight) {
+		console.log('[mesh] reconcile already in progress — skipping this tick');
+		return inFlight;
+	}
+	inFlight = reconcileMesh().finally(() => { inFlight = null; });
+	return inFlight;
+}
+
 function startMeshReconcile({ intervalMs = RECONCILE_INTERVAL_MS } = {}) {
-	reconcileMesh().catch((err) => console.error('[mesh] initial reconcile failed:', err.message));
+	runReconcile().catch((err) => console.error('[mesh] initial reconcile failed:', err.message));
 	if (timer) clearInterval(timer);
 	timer = setInterval(() => {
-		reconcileMesh().catch((err) => console.error('[mesh] reconcile failed:', err.message));
+		runReconcile().catch((err) => console.error('[mesh] reconcile failed:', err.message));
 	}, intervalMs);
 	if (timer.unref) timer.unref();
 }

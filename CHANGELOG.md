@@ -1,3 +1,29 @@
+## v3.1.4
+
+- fix: **the loopback Redis config is actually loaded now.** `install.sh` wrote
+  `/etc/redis/theta-gateway.conf` (loopback bind, `dir` under
+  `/var/lib/theta-gateway/redis`, AOF on) but merely `systemctl enable --now
+  redis-server`, which loads the distro default — so the gateway's WireGuard
+  identity, sessions and OAuth state persisted to the distro path nobody
+  documented or backed up, and AOF durability was never enabled. A systemd
+  drop-in now points `redis-server` at the gateway config.
+- fix: **reconcile is serialized.** A pass dials the directory three times
+  (10s timeout each) and can outlive the 60s interval; overlapping passes raced
+  on `wg`/`ip`/`iptables` and could stack duplicate rules. A tick that finds a
+  pass in flight now skips instead of stacking on it.
+- fix: **exit policy rules are diffed, not cleared-and-re-added.** The old
+  clear-all-re-add approach blipped every exiting device's routing for a
+  window on each 60s pass, and its cleanup deleted any rule in the priority
+  range regardless of owner. `applyExits` now removes only stale rules by
+  exact match and adds only missing ones — no blip, and an operator rule that
+  lands in the range is left alone.
+- docs: **rewrote `DEPLOYMENT.md` and `docs/installation.md`** for the
+  host-installed gateway (v3.0.0+): the container-era "three ways to run"
+  instructions, `ops/install.sh` bare-metal path and `docker compose logs -f
+  jump-host` were all dead. Now documents `install.sh` (the real path), where
+  config/data live, the Redis drop-in, port-22 options and the roster-driven
+  mesh.
+
 ## v3.1.3
 
 - fix: **upgrading an already-running gateway no longer fails the port check.**

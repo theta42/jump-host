@@ -159,10 +159,26 @@ async function applyExits(plan, identity) {
 		}
 	}
 
-	// Rules: replace the whole managed set rather than diffing, since they are
-	// cheap and identified by priority.
-	clearManagedRules();
+	// Rules: diff against what is actually installed rather than
+	// clear-all-re-add. The clear-all approach is a 60-second packet blip for
+	// every device using an exit (there is a window with no rule routing its
+	// traffic while they are re-added), and its cleanup pass -- deleting
+	// anything in the priority range -- would also remove an operator rule that
+	// happened to land in it. Removing only rules that no longer match the
+	// plan, and only ones this module could have created, fixes both.
+	const installed = listManagedRules();
+	const wantedFrom = new Set(plan.rules.map((r) => r.from));
+
+	// Remove stale rules: ours, in range, not wanted any more.
+	for (const rule of installed) {
+		if (wantedFrom.has(rule.from)) continue;
+		const res = run('ip', ['rule', 'del', 'from', rule.from, 'lookup', String(rule.table), 'priority', String(rule.priority)]);
+		if (!res.ok) failed.push({ rule: rule.from, error: res.err });
+	}
+
+	// Add missing rules: planned but not present. No-op when already there.
 	for (const rule of plan.rules) {
+		if (installed.some((r) => r.from === rule.from && Number(r.table) === Number(rule.table))) continue;
 		const res = run('ip', ['rule', 'add', 'from', rule.from, 'lookup', String(rule.table), 'priority', String(rule.priority)]);
 		if (!res.ok) failed.push({ rule: rule.from, error: res.err });
 	}
