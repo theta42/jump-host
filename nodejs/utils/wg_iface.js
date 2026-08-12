@@ -78,34 +78,108 @@ async function ensureInterface(name) {
 	return { mode: 'userspace', pid: child.pid };
 }
 
+// `wg set ... private-key <file>` and NOT `wg setconf`: both read the key from
+// a file rather than argv (argv would leak it via /proc/<pid>/cmdline to
+// anyone on the host), but `setconf` APPLIES a whole config, which means it
+// deletes every peer not named in that file. Applying an [Interface]-only
+// config -- which is all this function has -- therefore wipes the interface's
+// entire peer list. That is exactly what used to happen on each mesh change:
+// registering a second gateway tore down the tunnel to the first, because
+// setPrivateKey ran before setPeer and took the existing peers with it.
+// Verified against wireguard-go in the gateway image: setconf 1 peer -> 0,
+// `wg set private-key` leaves 2 peers at 2.
+//
+// ListenPort matters: without one, WG binds an ephemeral port, which is fine
+// for a purely outbound roaming client but useless for a gateway another
+// gateway needs to dial back into as an Endpoint.
 function setPrivateKey(name, privateKeyBase64, listenPort) {
-	// `wg setconf` reads the private key from a file, not argv (argv would leak
-	// it via /proc/<pid>/cmdline to anyone on the host). Pipe it through stdin
-	// via a temp file instead -- see setPeer's note on the same tradeoff.
-	// ListenPort matters: without one, WG binds an ephemeral port, which is
-	// fine for a purely outbound roaming client but useless for a gateway
-	// another gateway needs to dial back into as an Endpoint.
 	const fs = require('fs');
 	const os = require('os');
 	const path = require('path');
-	const tmp = path.join(os.tmpdir(), `wg-${name}-${Date.now()}.conf`);
-	const lines = ['[Interface]', `PrivateKey = ${privateKeyBase64}`];
-	if (listenPort) lines.push(`ListenPort = ${listenPort}`);
-	fs.writeFileSync(tmp, lines.join('\n') + '\n', { mode: 0o600 });
+	const tmp = path.join(os.tmpdir(), `wg-${name}-${Date.now()}.key`);
+	fs.writeFileSync(tmp, privateKeyBase64 + '\n', { mode: 0o600 });
 	try {
-		run('wg', ['setconf', name, tmp]);
+		const args = ['set', name, 'private-key', tmp];
+		if (listenPort) args.push('listen-port', String(listenPort));
+		run('wg', args);
 	} finally {
 		fs.unlinkSync(tmp);
 	}
 }
 
 function setAddress(name, cidr) {
-	// Flush first so re-applying (e.g. after a mesh index reassignment, which
-	// shouldn't normally happen but must not silently stack addresses if it
-	// does) leaves exactly one address, not an accumulating list.
-	tryRun('ip', ['addr', 'flush', 'dev', name]);
-	run('ip', ['addr', 'add', cidr, 'dev', name]);
+	setAddresses(name, [cidr]);
+}
+
+/**
+ * Give the interface exactly this set of addresses.
+ *
+ * A gateway carries two: its mesh identity (172.24.0.<s>/32) and its site
+ * router address (10.<s>.0.1/16). Reconciled as a SET rather than flushed and
+ * re-added, because flushing drops the addresses for an instant on every
+ * reconcile -- and reconcile runs on a timer, so that would be a periodic
+ * blip on a live router for no reason.
+ */
+function setAddresses(name, cidrs) {
+	const wanted = new Set(cidrs);
+	const shown = tryRun('ip', ['-o', '-4', 'addr', 'show', 'dev', name]);
+	const present = new Set();
+	if (shown.ok) {
+		for (const line of shown.out.split('\n')) {
+			const m = /\sinet\s+(\S+)/.exec(line);
+			if (m) present.add(m[1]);
+		}
+	}
+
+	for (const cidr of wanted) {
+		if (present.has(cidr)) continue;
+		const add = tryRun('ip', ['addr', 'add', cidr, 'dev', name]);
+		if (!add.ok && !/File exists/.test(add.err)) {
+			throw new Error(`failed to add ${cidr} to ${name}: ${add.err}`);
+		}
+	}
+	for (const cidr of present) {
+		if (!wanted.has(cidr)) tryRun('ip', ['addr', 'del', cidr, 'dev', name]);
+	}
+
 	run('ip', ['link', 'set', 'up', 'dev', name]);
+}
+
+/** Public keys of every peer currently on the interface. */
+function listPeers(name) {
+	const res = tryRun('wg', ['show', name, 'peers']);
+	if (!res.ok) return [];
+	return res.out.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
+/**
+ * Add a route if it is not already there. Separate from setPeer because the
+ * mesh-wide routes (10.0.0.0/8, 172.24.0.0/16) belong to the interface, not to
+ * any one peer -- WireGuard's own AllowedIPs decide which tunnel a packet
+ * takes once it has been routed in.
+ */
+function ensureRoute(cidr, dev) {
+	const existing = tryRun('ip', ['route', 'show', cidr, 'dev', dev]);
+	if (existing.ok && existing.out.trim()) return false;
+	const add = tryRun('ip', ['route', 'add', cidr, 'dev', dev]);
+	if (!add.ok && !/File exists/.test(add.err)) {
+		throw new Error(`failed to add route ${cidr} via ${dev}: ${add.err}`);
+	}
+	return add.ok;
+}
+
+// Configure a peer's CRYPTO routing only, adding no kernel routes.
+//
+// Needed by exit interfaces, whose single peer owns 0.0.0.0/0: letting setPeer
+// add that to the main routing table would replace this host's own default
+// route with the tunnel and cut the box off the internet. An exit's default
+// belongs in that exit's own policy-routing table and nowhere else.
+function setPeerNoRoutes(name, { publicKey, endpoint, allowedIPs, keepalive }) {
+	const ips = allowedIPs || [];
+	const args = ['set', name, 'peer', publicKey, 'allowed-ips', ips.join(',')];
+	if (endpoint) args.push('endpoint', endpoint);
+	if (keepalive) args.push('persistent-keepalive', String(keepalive));
+	run('wg', args);
 }
 
 // Apply (or update) one peer. Safe to call repeatedly for the same peer --
@@ -119,12 +193,9 @@ function setAddress(name, cidr) {
 // routes through it (confirmed the hard way: a real encrypted handshake
 // completed between two containers with zero kernel route present, and
 // ping still showed 100% loss).
-function setPeer(name, { publicKey, endpoint, allowedIPs, keepalive }) {
-	const ips = allowedIPs || [];
-	const args = ['set', name, 'peer', publicKey, 'allowed-ips', ips.join(',')];
-	if (endpoint) args.push('endpoint', endpoint);
-	if (keepalive) args.push('persistent-keepalive', String(keepalive));
-	run('wg', args);
+function setPeer(name, peer) {
+	setPeerNoRoutes(name, peer);
+	const ips = peer.allowedIPs || [];
 
 	for (const cidr of ips) {
 		const add = tryRun('ip', ['route', 'add', cidr, 'dev', name]);
@@ -142,10 +213,9 @@ function setPeer(name, { publicKey, endpoint, allowedIPs, keepalive }) {
 // longer knows what to clean up, and nothing else tracks these routes,
 // since they were added by us directly, not by wg-quick).
 //
-// Safe to assume none of a peer's AllowedIPs collide with this gateway's
-// own local address range: mesh indexes are unique per gateway
-// (models/mesh_gateway.js's nextFreeMeshIndex), so a peer's
-// 172.24.<peerIndex>.0/24 can never equal our own 172.24.<ownIndex>.0/24.
+// Safe to assume none of a peer's AllowedIPs collide with this gateway's own
+// address range: site ids are allocated once, cluster-wide, by the directory
+// master, so a peer's 10.<peerId>.0.0/16 can never equal our own 10.<ourId>.0.0/16.
 function removePeer(name, publicKey) {
 	const show = tryRun('wg', ['show', name, 'allowed-ips']);
 	let allowedIPs = [];
@@ -163,12 +233,51 @@ function removePeer(name, publicKey) {
 	}
 }
 
+// Live per-peer status straight from the kernel/userspace device: has this
+// peer ever completed a handshake, and how recently? The registry's
+// `lastSeenAt` only records when a peer REGISTERED, which says nothing about
+// whether the tunnel is currently up -- this does.
+//
+// `wg show <iface> dump` is used rather than the human-readable output
+// because it is stable and parseable. Its FIRST line is the interface itself
+// and begins with THIS GATEWAY'S PRIVATE KEY -- it is skipped, and only the
+// per-peer fields below are ever returned, so the private key cannot leak
+// into an API response.
+//
+// Peer line: publickey presharedkey endpoint allowed-ips latest-handshake
+//            transfer-rx transfer-tx persistent-keepalive
+function peerStatus(name) {
+	const dump = tryRun('wg', ['show', name, 'dump']);
+	if (!dump.ok) return {};
+	const out = {};
+	const lines = dump.out.trim().split('\n').slice(1); // skip the interface line
+	for (const line of lines) {
+		const f = line.split('\t');
+		if (f.length < 7) continue;
+		const handshake = Number(f[4]) || 0;
+		out[f[0]] = {
+			endpoint: f[2] === '(none)' ? null : f[2],
+			latestHandshake: handshake,
+			// A peer that has never handshaken reports 0, not a timestamp.
+			handshakeAgeSeconds: handshake ? Math.max(0, Math.floor(Date.now() / 1000) - handshake) : null,
+			rxBytes: Number(f[5]) || 0,
+			txBytes: Number(f[6]) || 0
+		};
+	}
+	return out;
+}
+
 module.exports = {
 	kernelWireguardAvailable,
 	ensureInterface,
 	setPrivateKey,
 	setAddress,
+	setAddresses,
+	listPeers,
+	ensureRoute,
 	setPeer,
+	setPeerNoRoutes,
 	removePeer,
-	interfaceExists
+	interfaceExists,
+	peerStatus
 };

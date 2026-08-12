@@ -1,96 +1,126 @@
-# End-to-end test of the mesh DATA plane: does traffic for a site's services
-# actually cross the gateway-to-gateway WireGuard tunnel?
+# Three gateways, real WireGuard, against a stand-in directory.
 #
-# The control plane (mint a join token, join, peers appear, ICMP crosses) was
-# already covered. What was not: every consumer of the mesh addressed
-# 172.24.<idx>.1:3001 directly, and nothing could reach it. WireGuard lives
-# inside the gateway container's namespace, so that address is unreachable
-# from the sibling containers (theta-directory, theta-proxy) that needed it,
-# and no process was listening on :3001 there either. Relay routes and
-# mesh-preferred replication both pointed at a dead target.
+# THREE and not two, deliberately. The two-gateway case cannot expose either of
+# the bugs that actually shipped in this subsystem:
 #
-# This harness proves the fix end to end with real WireGuard:
+#   * setPrivateKey applied the key with `wg setconf`, which replaces the whole
+#     device config and therefore deletes every peer not in it -- so the second
+#     peer wiped the first. With one peer each, there is nothing to wipe.
+#   * The joining side recorded a locally-invented index for its peer. At two
+#     gateways that agreed with reality by coincidence; at three it diverges.
 #
-#   client -> gateway-a:30002 --wg tunnel--> 172.24.2.1:3001 -> directory-b
+# Both are structurally invisible below three sites.
 #
-#   docker compose -f docker-compose.mesh-e2e.yml up --build --abort-on-container-exit --exit-code-from client
-#   # exit 0 = MESH DATA PLANE E2E PASS
+# Credentials are supplied at run time rather than written down here: these
+# containers live for about ninety seconds and are never deployed, but a
+# literal password in a committed file is a literal password in a committed
+# file, and secret scanners are right to say so.
+#
+#   export E2E_PASS=$(openssl rand -hex 12) \
+#          E2E_JWT=$(openssl rand -hex 24) \
+#          E2E_TOKEN=$(openssl rand -hex 16)
+#   docker compose -f docker-compose.mesh-e2e.yml up --build \
+#     --abort-on-container-exit --exit-code-from checker
+#   # exit 0 = THREE-SITE MESH E2E PASS
+
+x-gateway: &gateway
+  build:
+    context: .
+    dockerfile: Dockerfile
+  cap_add: [NET_ADMIN]
+  # wireguard-go needs a TUN device when the kernel module is unavailable,
+  # which is the common case in CI.
+  devices:
+    - /dev/net/tun:/dev/net/tun
+  healthcheck:
+    test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+    interval: 2s
+    timeout: 3s
+    retries: 40
+    start_period: 5s
+  depends_on:
+    fake-directory:
+      condition: service_started
 
 services:
-  gateway-a:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: mesh_e2e_gateway_a
-    cap_add: [NET_ADMIN]
-    environment:
-      - NODE_ENV=production
-      - app_web__port=3002
-      - app_auth__localAdminPass=meshE2E!pass1
-      - app_oauth__jwtSecret=mesh-e2e-gateway-a-jwt-secret
-      - app_wireguard__serverEndpoint=gateway-a:51820
-      # This site's directory, as the ingress forwarder should reach it.
-      - THETA_MESH_SERVICE_TARGET=directory-a:3001
-      - SITE_SLUG=site_a
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
-      interval: 2s
-      timeout: 3s
-      retries: 40
-      start_period: 5s
-
-  gateway-b:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: mesh_e2e_gateway_b
-    cap_add: [NET_ADMIN]
-    environment:
-      - NODE_ENV=production
-      - app_web__port=3002
-      - app_auth__localAdminPass=meshE2E!pass2
-      - app_oauth__jwtSecret=mesh-e2e-gateway-b-jwt-secret
-      - app_wireguard__serverEndpoint=gateway-b:51820
-      - THETA_MESH_SERVICE_TARGET=directory-b:3001
-      - SITE_SLUG=site_b
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
-      interval: 2s
-      timeout: 3s
-      retries: 40
-      start_period: 5s
-
-  # Stand-ins for each site's theta-directory: the thing the mesh is supposed
-  # to carry traffic to. Deliberately dumb -- this test is about reachability,
-  # not about the directory API.
-  directory-a:
+  # One listener per site (4001/4002/4003), because in a real cluster each site
+  # has its own directory and a gateway's site id comes from the one it talks
+  # to -- that is what makes "which site am I" answerable.
+  fake-directory:
     image: node:20-alpine
-    container_name: mesh_e2e_directory_a
-    command: ["node", "-e", "require('http').createServer((q,s)=>s.end('SITE-A')).listen(3001,'0.0.0.0',()=>console.log('directory-a on 3001'))"]
-
-  directory-b:
-    image: node:20-alpine
-    container_name: mesh_e2e_directory_b
-    command: ["node", "-e", "require('http').createServer((q,s)=>s.end('SITE-B')).listen(3001,'0.0.0.0',()=>console.log('directory-b on 3001'))"]
-
-  client:
-    image: node:20-alpine
-    container_name: mesh_e2e_client
+    container_name: mesh_e2e_directory
     working_dir: /test
     volumes:
-      - ./test:/test:ro
-    command: ["node", "/test/mesh_data_plane_e2e.js"]
+      - ./nodejs/test/e2e:/test:ro
+    command: ["node", "/test/fake_directory.js"]
+
+  gateway-1:
+    <<: *gateway
+    container_name: mesh_e2e_gateway_1
     environment:
-      - GATEWAY_A_URL=http://gateway-a:3002
-      - GATEWAY_B_URL=http://gateway-b:3002
-      - GATEWAY_A_ADMIN_PASS=meshE2E!pass1
-      - GATEWAY_B_ADMIN_PASS=meshE2E!pass2
+      - NODE_ENV=production
+      # A peer that publishes after a gateway's last pass is applied on the
+      # next one, so in the harness that interval is dead time: 5s, not 60.
+      - THETA_MESH_RECONCILE_MS=5000
+      - app_web__port=3002
+      - app_auth__localAdminPass=${E2E_PASS:?generate one — see the header}
+      - app_oauth__jwtSecret=${E2E_JWT:?generate one — see the header}
+      - DIRECTORY_INTERNAL_URL=http://fake-directory:4001
+      - DIRECTORY_API_TOKEN=${E2E_TOKEN:?generate one — see the header}
+      - THETA_MESH_ENDPOINT=gateway-1:51820
+      - SITE_SLUG=hub
+
+  gateway-2:
+    <<: *gateway
+    container_name: mesh_e2e_gateway_2
+    environment:
+      - NODE_ENV=production
+      # A peer that publishes after a gateway's last pass is applied on the
+      # next one, so in the harness that interval is dead time: 5s, not 60.
+      - THETA_MESH_RECONCILE_MS=5000
+      - app_web__port=3002
+      - app_auth__localAdminPass=${E2E_PASS:?generate one — see the header}
+      - app_oauth__jwtSecret=${E2E_JWT:?generate one — see the header}
+      - DIRECTORY_INTERNAL_URL=http://fake-directory:4002
+      - DIRECTORY_API_TOKEN=${E2E_TOKEN:?generate one — see the header}
+      - THETA_MESH_ENDPOINT=gateway-2:51820
+      - SITE_SLUG=office
+
+  gateway-3:
+    <<: *gateway
+    container_name: mesh_e2e_gateway_3
+    environment:
+      - NODE_ENV=production
+      # A peer that publishes after a gateway's last pass is applied on the
+      # next one, so in the harness that interval is dead time: 5s, not 60.
+      - THETA_MESH_RECONCILE_MS=5000
+      - app_web__port=3002
+      - app_auth__localAdminPass=${E2E_PASS:?generate one — see the header}
+      - app_oauth__jwtSecret=${E2E_JWT:?generate one — see the header}
+      - DIRECTORY_INTERNAL_URL=http://fake-directory:4003
+      - DIRECTORY_API_TOKEN=${E2E_TOKEN:?generate one — see the header}
+      - THETA_MESH_ENDPOINT=gateway-3:51820
+      - SITE_SLUG=home
+
+  checker:
+    image: node:20-alpine
+    container_name: mesh_e2e_checker
+    working_dir: /test
+    volumes:
+      - ./nodejs/test/e2e:/test:ro
+    command: ["node", "/test/mesh_three_site_e2e.js"]
+    environment:
+      - GATEWAY_1_URL=http://gateway-1:3002
+      - GATEWAY_2_URL=http://gateway-2:3002
+      - GATEWAY_3_URL=http://gateway-3:3002
+      - GATEWAY_1_ADMIN_PASS=${E2E_PASS}
+      - GATEWAY_2_ADMIN_PASS=${E2E_PASS}
+      - GATEWAY_3_ADMIN_PASS=${E2E_PASS}
+      - FAKE_DIRECTORY_URL=http://fake-directory:4001
     depends_on:
-      gateway-a:
+      gateway-1:
         condition: service_healthy
-      gateway-b:
+      gateway-2:
         condition: service_healthy
-      directory-a:
-        condition: service_started
-      directory-b:
-        condition: service_started
+      gateway-3:
+        condition: service_healthy

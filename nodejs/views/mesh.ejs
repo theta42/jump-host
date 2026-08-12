@@ -4,10 +4,19 @@
 <div class="container mt-4 mb-5">
 	<div class="d-flex align-items-center justify-content-between mb-4">
 		<div>
-			<h3 class="mb-1"><i class="fa-solid fa-diagram-project text-primary me-2"></i>Gateway Mesh</h3>
-			<p class="text-muted small mb-0">Site-to-site WireGuard tunnels between theta-gateway instances. Different from <a href="/wireguard">WireGuard</a>, which manages individual roaming-client peers and exit nodes.</p>
+			<h3 class="mb-1"><i class="fa-solid fa-diagram-project text-primary me-2"></i>Site Network</h3>
+			<p class="text-muted small mb-0">
+				What this gateway is actually doing right now. Sites, devices and exits are
+				configured in the <strong>directory</strong> — joining a directory is joining the mesh —
+				and this page shows how that config landed on the wire.
+			</p>
 		</div>
+		<button class="btn btn-sm btn-outline-secondary" onclick="reconcileMesh(this)">
+			<i class="fa-solid fa-rotate me-1"></i> Re-apply now
+		</button>
 	</div>
+
+	<div id="mesh-alerts"></div>
 
 	<div class="card shadow-sm mb-4">
 		<div class="card-header bg-dark text-light border-secondary">
@@ -15,153 +24,242 @@
 		</div>
 		<div class="card-body">
 			<div class="row g-3">
-				<div class="col-md-4">
+				<div class="col-md-3">
 					<div class="p-3 border rounded bg-light dark-bg-subtle">
-						<div class="text-muted small fw-semibold">MESH INTERFACE</div>
-						<div class="font-monospace fw-bold text-primary mt-1" id="mesh-iface">Loading...</div>
+						<div class="text-muted small fw-semibold">SITE</div>
+						<div class="fw-bold mt-1" id="mesh-site">Loading...</div>
 					</div>
 				</div>
-				<div class="col-md-4">
+				<div class="col-md-3">
 					<div class="p-3 border rounded bg-light dark-bg-subtle">
-						<div class="text-muted small fw-semibold">WIREGUARD MODE</div>
-						<div class="fw-bold mt-1" id="mesh-kernel-mode">Loading...</div>
+						<div class="text-muted small fw-semibold">MESH ADDRESS</div>
+						<div class="font-monospace fw-bold text-primary mt-1" id="mesh-address">—</div>
 					</div>
 				</div>
-				<div class="col-md-4">
+				<div class="col-md-3">
 					<div class="p-3 border rounded bg-light dark-bg-subtle">
-						<div class="text-muted small fw-semibold">MESHED GATEWAYS</div>
-						<div class="fw-bold mt-1" id="mesh-gateway-count">Loading...</div>
+						<div class="text-muted small fw-semibold">WIREGUARD</div>
+						<div class="fw-bold mt-1" id="mesh-mode">—</div>
+					</div>
+				</div>
+				<div class="col-md-3">
+					<div class="p-3 border rounded bg-light dark-bg-subtle">
+						<div class="text-muted small fw-semibold">UPLINK</div>
+						<div class="font-monospace fw-bold mt-1" id="mesh-wan">—</div>
 					</div>
 				</div>
 			</div>
 		</div>
 	</div>
 
-	<div class="row g-4">
-		<div class="col-md-6">
-			<div class="card shadow-sm h-100">
-				<div class="card-header"><i class="fa-solid fa-key me-2"></i>Mint a Join Token</div>
-				<div class="card-body">
-					<p class="small text-muted">Give this to a new gateway so it can join this one's mesh (single-use, expires in 15 minutes). It calls this gateway's <code>/api/mesh/register</code> with it.</p>
-					<button class="btn btn-sm btn-success" onclick="mintMeshJoinToken()"><i class="fa-solid fa-plus me-1"></i> Mint Join Token</button>
-					<div id="mesh-join-token-result" class="mt-2"></div>
-				</div>
-			</div>
-		</div>
-		<div class="col-md-6">
-			<div class="card shadow-sm h-100">
-				<div class="card-header"><i class="fa-solid fa-right-to-bracket me-2"></i>Join a Remote Gateway's Mesh</div>
-				<div class="card-body">
-					<p class="small text-muted">Have a join token from another gateway? Use it here to mesh THIS gateway into that one.</p>
-					<div class="mb-2">
-						<input type="text" id="mesh-remote-endpoint" class="form-control form-control-sm" placeholder="Remote gateway URL (e.g. https://jump.master.example.com)">
-					</div>
-					<div class="mb-2">
-						<input type="text" id="mesh-remote-token" class="form-control form-control-sm font-monospace" placeholder="Join token (mjt_...)">
-					</div>
-					<button class="btn btn-sm btn-primary" onclick="joinRemoteMesh()"><i class="fa-solid fa-link me-1"></i> Join</button>
-				</div>
-			</div>
-		</div>
+	<div class="card shadow-sm mb-4">
+		<div class="card-header"><i class="fa-solid fa-network-wired me-2"></i>Peer Sites</div>
+		<div class="card-body p-0" id="mesh-sites-wrap"><div class="text-center py-4 text-muted">Loading...</div></div>
 	</div>
 
-	<div class="card shadow-sm mt-4">
-		<div class="card-header"><i class="fa-solid fa-network-wired me-2"></i>Meshed Gateways</div>
-		<div class="card-body p-0" id="mesh-gateways-wrap">
-			<div class="text-center py-4 text-muted">Loading...</div>
-		</div>
+	<div class="card shadow-sm mb-4">
+		<div class="card-header"><i class="fa-solid fa-laptop me-2"></i>Devices at This Site</div>
+		<div class="card-body p-0" id="mesh-clients-wrap"><div class="text-center py-4 text-muted">Loading...</div></div>
+	</div>
+
+	<div class="card shadow-sm mb-4">
+		<div class="card-header"><i class="fa-solid fa-globe me-2"></i>Internet Exits</div>
+		<div class="card-body p-0" id="mesh-exits-wrap"><div class="text-center py-4 text-muted">Loading...</div></div>
+	</div>
+
+	<div class="card shadow-sm">
+		<div class="card-header"><i class="fa-solid fa-right-left me-2"></i>LAN Mapping</div>
+		<div class="card-body p-0" id="mesh-netmap-wrap"><div class="text-center py-4 text-muted">Loading...</div></div>
 	</div>
 </div>
 
 <%- include('bottom') %>
 <script type="text/javascript">
 function esc(s) {
-	return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+	return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-$(document).ready(function(){
-	loadMeshStatus();
-});
+$(document).ready(function(){ loadStatus(); });
 
-function loadMeshStatus() {
-	app.api.get('mesh/gateways', function(err, data){
+function loadStatus() {
+	app.api.get('mesh/status', function(err, data){
 		if (err || !data) {
-			$('#mesh-iface').text('(unavailable)');
-			$('#mesh-kernel-mode').text('(unavailable)');
-			$('#mesh-gateway-count').text('—');
-			$('#mesh-gateways-wrap').html('<div class="text-center py-4 text-danger">Could not load mesh status: ' + esc((err && err.message) || 'unknown error') + '</div>');
+			$('#mesh-alerts').html('<div class="alert alert-danger">Could not read mesh status: ' + esc((err && err.message) || 'unknown error') + '</div>');
 			return;
 		}
-		$('#mesh-iface').text(data.iface || 'wg-mesh');
-		$('#mesh-kernel-mode').html(data.kernelWireguard
-			? '<span class="badge bg-success"><i class="fa-solid fa-microchip me-1"></i> In-kernel</span>'
-			: '<span class="badge bg-warning text-dark"><i class="fa-solid fa-layer-group me-1"></i> Userspace (wireguard-go)</span>');
-		var gateways = data.gateways || [];
-		$('#mesh-gateway-count').text(gateways.length + ' gateway' + (gateways.length === 1 ? '' : 's'));
-		renderGatewaysTable(gateways);
+		renderAlerts(data);
+		renderSummary(data);
+		renderSites(data);
+		renderClients(data);
+		renderExits(data);
+		renderNetmaps(data);
 	});
 }
 
-function renderGatewaysTable(gateways) {
-	var $w = $('#mesh-gateways-wrap');
-	if (!gateways.length) {
-		$w.html('<div class="text-center py-4 text-muted"><i class="fa-solid fa-diagram-project me-2"></i>No meshed gateways yet.<br><small>Mint a join token above and have another gateway join, or join this one into a remote gateway\'s mesh.</small></div>');
+// The failure modes worth calling out explicitly, because each one looks
+// identical to "working" in a plain peer table.
+function renderAlerts(d) {
+	var alerts = [];
+	if (!d.siteId) {
+		alerts.push(['warning', 'This gateway has no site id yet. Its site has not joined a directory, so there is no mesh to build.']);
+	}
+	if (d.stale) {
+		alerts.push(['warning', 'The directory is unreachable — showing the last known good configuration' +
+			(d.directoryError ? ' (' + esc(d.directoryError) + ')' : '') +
+			'. Tunnels keep running; changes made in the directory will not appear until it is back.']);
+	}
+	if (d.siteId && d.live && !d.live.up) {
+		alerts.push(['danger', 'The WireGuard interface is not up, so nothing can cross the mesh. Use <em>Re-apply now</em>.']);
+	}
+	if (!d.wanInterface) {
+		alerts.push(['warning', 'No default route found, so this gateway cannot NAT traffic to the internet. Exits and full-tunnel clients will not work.']);
+	}
+	if (d.planned && d.planned.netmaps && d.planned.netmaps.length && !d.netmapAvailable) {
+		alerts.push(['danger', 'A LAN mapping is configured but this kernel has no NETMAP target — the mapping cannot be applied.']);
+	}
+	// A device pointed at an exit that cannot be built keeps working, but with
+	// local breakout instead of the exit its owner picked. Say so by name.
+	(d.planned && d.planned.exitProblems || []).forEach(function(p){
+		alerts.push(['warning', 'Device <code>' + esc(p.client) + '</code> is set to exit through site '
+			+ esc(p.exitSiteId) + ', which cannot be used: ' + esc(p.reason)
+			+ '. Its traffic is breaking out locally instead.']);
+	});
+	$('#mesh-alerts').html(alerts.map(function(a){
+		return '<div class="alert alert-' + a[0] + ' small py-2">' + a[1] + '</div>';
+	}).join(''));
+}
+
+function renderSummary(d) {
+	var site = d.site || {};
+	$('#mesh-site').html(d.siteId
+		? esc(site.name || site.slug || ('site ' + d.siteId)) + ' <span class="badge bg-primary ms-1">' + esc(d.siteId) + '</span>'
+		: '<span class="text-muted">not joined</span>');
+	$('#mesh-address').text((d.planned.addresses || []).join('  ') || '—');
+	$('#mesh-mode').html(d.kernelWireguard
+		? '<span class="badge bg-success"><i class="fa-solid fa-microchip me-1"></i> In-kernel</span>'
+		: '<span class="badge bg-warning text-dark"><i class="fa-solid fa-layer-group me-1"></i> Userspace</span>');
+	$('#mesh-wan').text(d.wanInterface || 'none');
+}
+
+// Handshake age is the only honest answer to "is this tunnel up?" -- a peer
+// can be perfectly configured and completely dead.
+function tunnelBadge(status) {
+	if (!status) return '<span class="badge text-bg-secondary" title="Not present on the WireGuard device">Not applied</span>';
+	if (!status.latestHandshake) return '<span class="badge text-bg-warning" title="Configured but never handshaken">Never connected</span>';
+	var age = status.handshakeAgeSeconds;
+	if (age < 300) return '<span class="badge text-bg-success" title="Last handshake ' + age + 's ago">Up</span>';
+	return '<span class="badge text-bg-danger" title="Last handshake ' + age + 's ago">Stale (' + Math.round(age / 60) + 'm)</span>';
+}
+
+function renderSites(d) {
+	var sites = (d.planned.peers || []).filter(function(p){ return p.kind === 'site'; });
+	if (!sites.length) {
+		$('#mesh-sites-wrap').html('<div class="text-center py-4 text-muted">No peer sites.<br><small>Sites appear here once another site joins the same directory and its gateway publishes a public key.</small></div>');
 		return;
 	}
-	var html = '<table class="table table-striped table-hover mb-0 align-middle"><thead><tr>'
-		+ '<th>Site</th><th>Mesh Index</th><th>Mesh Address</th><th>Endpoint</th><th>Public Key</th><th>Last Seen</th><th class="text-end">Actions</th>'
-		+ '</tr></thead><tbody>';
-	gateways.forEach(function(g){
-		var isSelf = g.siteSlug === '(self)';
-		html += '<tr' + (isSelf ? ' class="table-active"' : '') + '>'
-			+ '<td>' + (isSelf ? '<em>This gateway</em>' : esc(g.siteSlug || '(unlabeled)')) + '</td>'
-			+ '<td><span class="badge bg-primary">' + esc(g.meshIndex) + '</span></td>'
-			+ '<td><code class="small">172.24.' + esc(g.meshIndex) + '.0/24</code></td>'
-			+ '<td><code class="small text-primary">' + esc(g.endpoint || '—') + '</code></td>'
-			+ '<td><code class="small text-truncate d-inline-block" style="max-width:220px;" title="' + esc(g.publicKey) + '">' + esc(g.publicKey) + '</code></td>'
-			+ '<td class="small text-muted">' + (g.lastSeenAt ? new Date(Number(g.lastSeenAt)).toLocaleString() : '—') + '</td>'
-			+ '<td class="text-end">' + (isSelf ? '' :
-				'<button class="btn btn-sm btn-outline-danger" onclick="removeMeshGateway(\'' + esc(g.id) + '\', \'' + esc(g.siteSlug || g.id) + '\')" title="Remove peer"><i class="fa-solid fa-trash"></i></button>')
-			+ '</td>'
+	var live = (d.live && d.live.peers) || {};
+	var rows = sites.map(function(p){
+		return '<tr>'
+			+ '<td>' + esc(p.label) + '</td>'
+			+ '<td>' + tunnelBadge(live[p.publicKey]) + '</td>'
+			+ '<td><code class="small">' + esc((p.allowedIPs || []).join(', ')) + '</code></td>'
+			+ '<td><code class="small text-primary">' + esc(p.endpoint || 'dials in') + '</code></td>'
+			+ '<td><code class="small text-truncate d-inline-block" style="max-width:200px;" title="' + esc(p.publicKey) + '">' + esc(p.publicKey) + '</code></td>'
 			+ '</tr>';
-	});
-	html += '</tbody></table>';
-	$w.html(html);
+	}).join('');
+	$('#mesh-sites-wrap').html('<div class="table-responsive"><table class="table table-striped mb-0 align-middle">'
+		+ '<thead><tr><th>Site</th><th>Tunnel</th><th>Routes</th><th>Endpoint</th><th>Public Key</th></tr></thead>'
+		+ '<tbody>' + rows + '</tbody></table></div>');
 }
 
-async function removeMeshGateway(id, label) {
-	var ok = await app.messages.confirm('Remove mesh peer "' + label + '"? This tears down the local WireGuard peer + routes. The other side keeps its half until removed there too.', $('#mesh-gateways-wrap'), 'danger');
-	if (!ok) return;
-	app.api.delete('mesh/gateways/' + id, function(err){
-		if (err) return app.messages.toast('Failed to remove gateway: ' + err.message, 'danger');
-		app.messages.toast('Gateway removed', 'success');
-		loadMeshStatus();
-	});
-}
-
-function mintMeshJoinToken() {
-	app.api.post('mesh/join-tokens', {}, function(err, data){
-		if (err) return app.messages.toast('Failed to mint join token: ' + err.message, 'danger');
-		$('#mesh-join-token-result').html(
-			'<div class="alert alert-success small mb-0">' +
-			'<strong>Shown once — copy it now:</strong><br>' +
-			'<code class="user-select-all">' + esc(data.token) + '</code>' +
-			'<br><span class="text-muted">Expires in ' + Math.round((data.expiresInSeconds || 0) / 60) + ' minutes.</span>' +
-			'</div>'
-		);
-	});
-}
-
-function joinRemoteMesh() {
-	var remoteEndpoint = ($('#mesh-remote-endpoint').val() || '').trim();
-	var joinToken = ($('#mesh-remote-token').val() || '').trim();
-	if (!remoteEndpoint || !joinToken) {
-		return app.messages.toast('Enter the remote gateway URL and a join token', 'warning');
+function renderClients(d) {
+	var clients = (d.planned.peers || []).filter(function(p){ return p.kind === 'client'; });
+	if (!clients.length) {
+		$('#mesh-clients-wrap').html('<div class="text-center py-4 text-muted">No devices enrolled at this site.<br><small>Users enrol their own devices in the directory.</small></div>');
+		return;
 	}
-	app.api.post('mesh/join', { remoteEndpoint: remoteEndpoint, joinToken: joinToken }, function(err, data){
-		if (err) return app.messages.toast('Join failed: ' + err.message, 'danger');
-		app.messages.toast('Meshed successfully — this gateway is mesh index ' + data.meshIndex + ', peer is index ' + data.peerMeshIndex, 'success');
-		loadMeshStatus();
+	var live = (d.live && d.live.peers) || {};
+	var rows = clients.map(function(p){
+		return '<tr>'
+			+ '<td>' + esc(p.label) + '</td>'
+			+ '<td>' + tunnelBadge(live[p.publicKey]) + '</td>'
+			+ '<td><code class="small">' + esc((p.allowedIPs || [])[0]) + '</code></td>'
+			+ '<td>' + (p.exitSiteId
+				? '<span class="badge text-bg-info">via site ' + esc(p.exitSiteId) + '</span>'
+				: '<span class="text-muted small">local breakout</span>') + '</td>'
+			+ '</tr>';
+	}).join('');
+	$('#mesh-clients-wrap').html('<div class="table-responsive"><table class="table table-striped mb-0 align-middle">'
+		+ '<thead><tr><th>Device</th><th>Tunnel</th><th>Address</th><th>Exit</th></tr></thead>'
+		+ '<tbody>' + rows + '</tbody></table></div>');
+}
+
+function renderExits(d) {
+	var exits = (d.planned && d.planned.exits) || [];
+	if (!exits.length) {
+		$('#mesh-exits-wrap').html('<div class="text-center py-4 text-muted">No exits in use.'
+			+ '<br><small>Each device that picks an exit gets one here. Exits are chosen per device in the directory.</small></div>');
+		return;
+	}
+	var live = d.exitLive || {};
+	var rules = (d.planned && d.planned.exitRules) || [];
+	var rows = exits.map(function(e){
+		var status = live[e.siteId];
+		// Each exit interface has exactly one peer -- the exit gateway.
+		var peerStatus = null;
+		if (status && status.peers) {
+			var keys = Object.keys(status.peers);
+			if (keys.length) peerStatus = status.peers[keys[0]];
+		}
+		var count = rules.filter(function(r){ return r.exitSiteId === e.siteId; }).length;
+		return '<tr>'
+			+ '<td>' + esc(e.slug) + ' <span class="badge bg-primary ms-1">' + esc(e.siteId) + '</span></td>'
+			+ '<td>' + (status ? tunnelBadge(peerStatus) : '<span class="badge text-bg-secondary">Not applied</span>') + '</td>'
+			+ '<td><code class="small">' + esc(e.iface) + '</code></td>'
+			+ '<td><code class="small text-primary">' + esc(e.endpoint) + '</code></td>'
+			+ '<td>' + count + ' device' + (count === 1 ? '' : 's') + '</td>'
+			+ '</tr>';
+	}).join('');
+	$('#mesh-exits-wrap').html('<div class="table-responsive"><table class="table table-striped mb-0 align-middle">'
+		+ '<thead><tr><th>Exit site</th><th>Tunnel</th><th>Interface</th><th>Endpoint</th><th>In use by</th></tr></thead>'
+		+ '<tbody>' + rows + '</tbody></table>'
+		+ '<div class="p-3 small text-muted border-top">Each exit is a separate WireGuard interface, because only one peer per '
+		+ 'interface can hold the default route. Devices are steered to one with a routing rule, so changing a device\'s exit '
+		+ 'never changes its configuration.</div></div>');
+}
+
+function renderNetmaps(d) {
+	var maps = d.planned.netmaps || [];
+	if (!maps.length) {
+		$('#mesh-netmap-wrap').html('<div class="text-center py-4 text-muted">No LAN mapping configured.'
+			+ '<br><small>Set this site\'s LAN ranges in the directory to make local machines reachable from other sites.</small></div>');
+		return;
+	}
+	var rows = maps.map(function(m){
+		return '<tr><td><code class="small">' + esc(m.shadow) + '</code></td>'
+			+ '<td class="text-muted"><i class="fa-solid fa-arrow-right-arrow-left"></i></td>'
+			+ '<td><code class="small">' + esc(m.physical) + '</code></td></tr>';
+	}).join('');
+	$('#mesh-netmap-wrap').html('<div class="table-responsive"><table class="table table-striped mb-0 align-middle">'
+		+ '<thead><tr><th>Reachable from the mesh as</th><th></th><th>Actually is</th></tr></thead>'
+		+ '<tbody>' + rows + '</tbody></table>'
+		+ '<div class="p-3 small text-muted border-top">Every site\'s LAN is likely 192.168.1.0/24, so each one is mapped 1:1 into its own range. '
+		+ '10.x.168.53 is the machine at 192.168.1.53 here.</div></div>');
+}
+
+function reconcileMesh(btn) {
+	var $btn = $(btn).prop('disabled', true);
+	app.api.post('mesh/reconcile', {}, function(err, data){
+		$btn.prop('disabled', false);
+		if (err) return app.messages.toast('Re-apply failed: ' + err.message, 'danger');
+		if (!data.ready) {
+			app.messages.toast(data.reason || 'Nothing to apply', 'info');
+		} else if (data.failed && data.failed.length) {
+			app.messages.toast('Applied with ' + data.peers + ' peer(s); ' + data.failed.length + ' failed', 'warning');
+		} else {
+			app.messages.toast('Applied — ' + data.peers + ' peer(s)', 'success');
+		}
+		loadStatus();
 	});
 }
 </script>

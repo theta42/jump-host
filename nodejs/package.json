@@ -1,6 +1,6 @@
 {
   "name": "theta-gateway",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "description": "SSH jump host for the theta42 stack — LDAP-authenticated, directory-driven host bridging with audit and metrics",
   "author": [
     {
@@ -14,7 +14,7 @@
   "scripts": {
     "start": "node ./bin/www",
     "dev": "npx nodemon --ignore public/ ./bin/www",
-    "test": "NODE_ENV=test node --test --test-force-exit test/unit/access.test.js test/unit/host_keys.test.js test/unit/no_native_dialogs.test.js test/unit/target_match.test.js test/unit/username_grammar.test.js test/unit/wireguard.test.js test/unit/mesh_addressing.test.js test/unit/mesh_forwarder.test.js",
+    "test": "NODE_ENV=test node --test --test-force-exit test/unit/access.test.js test/unit/host_keys.test.js test/unit/no_native_dialogs.test.js test/unit/target_match.test.js test/unit/username_grammar.test.js test/unit/mesh_addressing.test.js test/unit/mesh_state.test.js test/unit/net_router.test.js test/unit/exit_router.test.js",
     "test:unit": "NODE_ENV=test node --test --test-force-exit test/unit/*.test.js",
     "test:integration": "NODE_ENV=test node --test --test-force-exit test/integration/*.test.js"
   },
