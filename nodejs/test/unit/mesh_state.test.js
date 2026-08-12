@@ -107,6 +107,31 @@ test('sites and devices share one interface without colliding', () => {
 	assert.strictEqual(plan.peers.length, 3);
 });
 
+// An exit interface presents a DIFFERENT key than the mesh interface, so the
+// exit site needs a separate peer entry for it. Without this the handshake is
+// refused there while the originating side looks perfectly configured.
+test('gateways exiting through this site become peers under their exit key', () => {
+	const doc = peersDoc({
+		exitPeers: [{ siteId: 7, slug: 'branch', publicKey: SITE_KEY(77), allowedIps: ['10.7.128.1/32', '10.7.128.2/32'] }]
+	});
+	const plan = planReconcile(doc, clientsDoc(), null);
+
+	const exitClient = plan.peers.find((p) => p.kind === 'exit-client');
+	assert.ok(exitClient, 'expected an exit-client peer');
+	assert.strictEqual(exitClient.publicKey, SITE_KEY(77));
+	// Only the devices actually using the exit -- not site 7's whole /16. An
+	// exit is permission to send internet traffic, not a route into a network.
+	assert.deepStrictEqual(exitClient.allowedIPs, ['10.7.128.1/32', '10.7.128.2/32']);
+	// They dial us, so nothing to dial back and nothing to keep alive.
+	assert.strictEqual(exitClient.endpoint, '');
+	assert.strictEqual(exitClient.keepalive, 0);
+});
+
+test('no exit peers means no extra peer entries', () => {
+	const plan = planReconcile(peersDoc(), clientsDoc(), null);
+	assert.strictEqual(plan.peers.filter((p) => p.kind === 'exit-client').length, 0);
+});
+
 test('the mesh routes get traffic into WireGuard at all', () => {
 	// `wg set allowed-ips` only configures crypto routing; without a kernel
 	// route nothing is ever handed to the interface. Learned the hard way.

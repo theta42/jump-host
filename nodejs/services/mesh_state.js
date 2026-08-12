@@ -39,19 +39,37 @@ const LISTEN_PORT = Number(process.env.THETA_MESH_LISTEN_PORT || 51820);
 // breaks every tunnel until each peer is updated. Rotation is a deliberate,
 // cluster-wide operation and is not attempted here.
 const KEYPAIR_KEY = () => `${conf.redis.prefix}wg_gateway_keypair`;
+// A SECOND keypair, used only by exit interfaces.
+//
+// It has to be separate. A peer is identified by its public key, and a remote
+// gateway keeps ONE endpoint and ONE session per peer. If wg-mesh and
+// wg-exit-<n> both presented this gateway's mesh key to the same remote, that
+// remote would see a single peer whose endpoint flaps between our two
+// interfaces, and the two would keep invalidating each other's session.
+// Verified against wireguard-go: with one key on two interfaces the remote's
+// endpoint settled on whichever interface handshook last, while both kept
+// re-handshaking.
+const EXIT_KEYPAIR_KEY = () => `${conf.redis.prefix}wg_exit_keypair`;
 
-async function localIdentity() {
+async function keypair(redisKey, label) {
 	const { getRedis } = require('../models/index');
 	const redis = await getRedis();
-	const stored = await redis.hGetAll(KEYPAIR_KEY());
+	const stored = await redis.hGetAll(redisKey);
 	if (stored && stored.publicKey && stored.privateKey) return stored;
 
 	const kp = wgKeys.generateKeypair();
 	const record = { publicKey: kp.publicKey, privateKey: kp.privateKey, createdAt: String(Date.now()) };
-	await redis.hSet(KEYPAIR_KEY(), record);
-	console.log('[mesh] generated this gateway\'s WireGuard identity');
+	await redis.hSet(redisKey, record);
+	console.log(`[mesh] generated this gateway's ${label}`);
 	return record;
 }
+
+const localIdentity = () => keypair(KEYPAIR_KEY(), 'WireGuard identity');
+
+// One exit keypair for ALL of this gateway's exit interfaces. Each talks to a
+// DIFFERENT remote, so there is no collision between them -- only between an
+// exit interface and wg-mesh, which is what this separates.
+const exitIdentity = () => keypair(EXIT_KEYPAIR_KEY(), 'exit identity');
 
 /**
  * The endpoint peers should dial to reach this gateway.
@@ -97,6 +115,25 @@ function planReconcile(peersDoc, clientsDoc, site) {
 			// Only keepalive toward peers we dial; a peer with no endpoint is
 			// one that dials us, and keepalive would have nowhere to go.
 			keepalive: peer.endpoint ? 25 : 0
+		});
+	}
+
+	// Gateways that route their devices' internet traffic OUT through this
+	// site. They dial us with their EXIT key, not their mesh key, so they need
+	// their own peer entry -- without it the handshake is refused and the exit
+	// fails silently at this end while looking fine at theirs.
+	for (const peer of (peersDoc.exitPeers || [])) {
+		if (!peer.publicKey || !peer.allowedIps || !peer.allowedIps.length) continue;
+		peers.push({
+			kind: 'exit-client',
+			label: `${peer.slug || 'site ' + peer.siteId} (exiting here)`,
+			publicKey: peer.publicKey,
+			// They dial us; we never dial them, so no endpoint and no keepalive.
+			endpoint: '',
+			// Only the specific device addresses using this exit -- an exit is
+			// permission to send internet traffic, not a route into a network.
+			allowedIPs: peer.allowedIps,
+			keepalive: 0
 		});
 	}
 
@@ -197,11 +234,16 @@ async function applyPlan(plan, identity) {
  */
 async function reconcileMesh() {
 	const identity = await localIdentity();
+	const exitKeys = await exitIdentity();
 
 	try {
 		await directory.publishSelf({
 			gatewayPublicKey: identity.publicKey,
-			gatewayEndpoint: localEndpoint()
+			gatewayEndpoint: localEndpoint(),
+			// So sites this gateway exits through can build a peer entry for
+			// its exit interfaces, which present this key rather than the mesh
+			// one.
+			gatewayExitPublicKey: exitKeys.publicKey
 		});
 	} catch (err) {
 		console.warn(`[mesh] could not publish this gateway's identity: ${err.message}`);
@@ -229,7 +271,7 @@ async function reconcileMesh() {
 	// not anyone is currently routing internet traffic through it.
 	const allSites = (rosterRes.value && rosterRes.value.sites) || [];
 	const exitPlan = exitRouter.planExits((clientsRes.value && clientsRes.value.clients) || [], allSites, plan.siteId);
-	const exitResult = await exitRouter.applyExits(exitPlan, identity);
+	const exitResult = await exitRouter.applyExits(exitPlan, exitKeys);
 	for (const bad of exitResult.unusable) {
 		console.warn(`[exit] ${bad.client} wants site ${bad.exitSiteId}: ${bad.reason}`);
 	}
@@ -258,6 +300,6 @@ function stopMeshReconcile() {
 
 module.exports = {
 	IFACE, LISTEN_PORT,
-	localIdentity, localEndpoint, planReconcile, applyPlan, reconcileMesh,
+	localIdentity, exitIdentity, localEndpoint, planReconcile, applyPlan, reconcileMesh,
 	startMeshReconcile, stopMeshReconcile
 };

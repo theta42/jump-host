@@ -33,6 +33,7 @@ const CLIENTS = {
 const roster = new Map(SITES.map((s) => [s.siteId, {
 	...s,
 	gatewayPublicKey: '',
+	gatewayExitPublicKey: '',
 	gatewayEndpoint: '',
 	lan172: '',
 	name: s.slug
@@ -78,6 +79,7 @@ function serveSite(localSiteId, port) {
 				// A gateway publishes only its own identity; it cannot name a
 				// site, exactly as the real API works.
 				if (payload.gatewayPublicKey) site.gatewayPublicKey = payload.gatewayPublicKey;
+				if (payload.gatewayExitPublicKey) site.gatewayExitPublicKey = payload.gatewayExitPublicKey;
 				if (payload.gatewayEndpoint) site.gatewayEndpoint = payload.gatewayEndpoint;
 				console.log(`[fake-directory:${localSiteId}] published key=${(site.gatewayPublicKey || '').slice(0, 8)}… endpoint=${site.gatewayEndpoint}`);
 				send(200, { status: 'ok', site });
@@ -86,10 +88,26 @@ function serveSite(localSiteId, port) {
 		}
 
 		if (url === '/api/mesh/peers') {
+			// Gateways exiting through THIS site, keyed by their exit key --
+			// they dial with a different key than their mesh one, so this site
+			// needs a separate peer entry or the handshake is refused.
+			const exitPeers = [];
+			for (const [homeId, clients] of Object.entries(CLIENTS)) {
+				const using = clients.filter((c) => Number(c.exitSiteId) === localSiteId);
+				if (!using.length) continue;
+				const home = roster.get(Number(homeId));
+				if (!home || !home.gatewayExitPublicKey) continue;
+				exitPeers.push({
+					siteId: Number(homeId), slug: home.slug,
+					publicKey: home.gatewayExitPublicKey,
+					allowedIps: using.map((c) => `${c.assignedIp}/32`)
+				});
+			}
 			return send(200, {
 				status: 'ok',
 				localSiteId,
 				hubSiteId: 1,
+				exitPeers,
 				peers: peersFor(localSiteId)
 			});
 		}

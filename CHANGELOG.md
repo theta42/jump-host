@@ -56,6 +56,17 @@ says. Addressing changed with it, so every site must be rebuilt.
   Devices are directory-managed now, with keys the server never stores. Its
   `10.100.0.0/16` pool went too; that range collided exactly with a site
   landing on id 100.
+- fix: **exit interfaces get their own keypair.** A remote gateway keeps one
+  endpoint and one session per peer KEY, so an exit interface presenting the
+  same key as the mesh interface made the remote's single peer entry flap
+  between the two while they invalidated each other's session — intermittent
+  breakage rather than a clean failure. Verified against wireguard-go in the
+  gateway image: one key on two interfaces left the remote pointed at whichever
+  handshook last, with both still re-handshaking; separate keys give two stable
+  peers. The gateway now publishes a second exit key, and an exit site builds a
+  peer entry for anyone exiting through it — allowed only the specific device
+  addresses using that exit, since an exit is permission to send internet
+  traffic, not a route into a network.
 - test: three-gateway end-to-end over real WireGuard
   (`docker-compose.mesh-e2e.yml`). Three and not two deliberately — the
   peer-wipe and index bugs above are both structurally invisible with one peer

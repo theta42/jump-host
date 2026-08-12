@@ -85,15 +85,32 @@ async function main() {
 		});
 	});
 
-	// THE peer-wipe regression. Two peers each, on the live interface, not just
-	// in the plan: `wg setconf` used to leave exactly one.
+	// THE peer-wipe regression. Every peer present on the live interface, not
+	// just in the plan: `wg setconf` used to leave exactly one.
+	//   site 1 (hub): 2 site peers + 1 exit-client (site 2's device exits here)
+	//   site 2: 2 site peers + 1 device
+	//   site 3: 2 site peers
 	for (const gw of GATEWAYS) {
 		const live = states[gw.siteId].live;
 		const livePeerCount = Object.keys((live && live.peers) || {}).length;
-		const expected = gw.siteId === 2 ? 3 : 2; // site 2 also has a device
+		const expected = gw.siteId === 3 ? 2 : 3;
 		check(`site ${gw.siteId} has ${expected} peers on the live interface`,
 			livePeerCount === expected, `saw ${livePeerCount}`);
 	}
+
+	// The exit site must accept the originating gateway under its EXIT key.
+	// Same key on both interfaces made the remote flap its single peer endpoint
+	// between them; verified against wireguard-go before this was split.
+	const hubExitPeers = (states[1].planned.peers || []).filter((p) => p.kind === 'exit-client');
+	check('the exit site peers the originating gateway under a distinct exit key',
+		hubExitPeers.length === 1, JSON.stringify(hubExitPeers.map((p) => p.label)));
+	check('the exit peer is allowed only the device address using it',
+		hubExitPeers.length === 1 && hubExitPeers[0].allowedIPs.length === 1
+			&& hubExitPeers[0].allowedIPs[0] === '10.2.128.1/32',
+		JSON.stringify(hubExitPeers[0] && hubExitPeers[0].allowedIPs));
+	const meshKeys = new Set((states[1].planned.peers || []).filter((p) => p.kind === 'site').map((p) => p.publicKey));
+	check('the exit key is not the same as that gateway\'s mesh key',
+		hubExitPeers.length === 1 && !meshKeys.has(hubExitPeers[0].publicKey));
 
 	// Addressing, end to end.
 	for (const gw of GATEWAYS) {
