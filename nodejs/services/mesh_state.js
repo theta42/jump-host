@@ -26,6 +26,7 @@ const wgIface = require('../utils/wg_iface');
 const wgKeys = require('../utils/wg_keys');
 const netRouter = require('../utils/net_router');
 const directory = require('./directory_client');
+const exitRouter = require('./exit_router');
 const {
 	meshAddress, siteGatewayCidr, siteCidr, shadowCidr, SHADOW_SLOTS, assertSiteId
 } = require('../utils/mesh_addressing');
@@ -222,9 +223,21 @@ async function reconcileMesh() {
 	}
 
 	const result = await applyPlan(plan, identity);
-	console.log(`[mesh] site ${plan.siteId}: ${result.peers} peer(s), ${plan.netmaps.length} NETMAP(s), WAN ${result.wan || 'none'}` +
+
+	// Exits are applied after the mesh, because an exit node is also an
+	// ordinary mesh peer and its site network should be reachable whether or
+	// not anyone is currently routing internet traffic through it.
+	const allSites = (rosterRes.value && rosterRes.value.sites) || [];
+	const exitPlan = exitRouter.planExits((clientsRes.value && clientsRes.value.clients) || [], allSites, plan.siteId);
+	const exitResult = await exitRouter.applyExits(exitPlan, identity);
+	for (const bad of exitResult.unusable) {
+		console.warn(`[exit] ${bad.client} wants site ${bad.exitSiteId}: ${bad.reason}`);
+	}
+
+	console.log(`[mesh] site ${plan.siteId}: ${result.peers} peer(s), ${plan.netmaps.length} NETMAP(s), ` +
+		`${exitResult.applied.length} exit(s), WAN ${result.wan || 'none'}` +
 		(peersRes.stale ? ' (from cached config — directory unreachable)' : ''));
-	return { ready: true, siteId: plan.siteId, ...result, stale: peersRes.stale };
+	return { ready: true, siteId: plan.siteId, ...result, exits: exitResult, stale: peersRes.stale };
 }
 
 let timer = null;

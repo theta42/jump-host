@@ -168,6 +168,20 @@ function ensureRoute(cidr, dev) {
 	return add.ok;
 }
 
+// Configure a peer's CRYPTO routing only, adding no kernel routes.
+//
+// Needed by exit interfaces, whose single peer owns 0.0.0.0/0: letting setPeer
+// add that to the main routing table would replace this host's own default
+// route with the tunnel and cut the box off the internet. An exit's default
+// belongs in that exit's own policy-routing table and nowhere else.
+function setPeerNoRoutes(name, { publicKey, endpoint, allowedIPs, keepalive }) {
+	const ips = allowedIPs || [];
+	const args = ['set', name, 'peer', publicKey, 'allowed-ips', ips.join(',')];
+	if (endpoint) args.push('endpoint', endpoint);
+	if (keepalive) args.push('persistent-keepalive', String(keepalive));
+	run('wg', args);
+}
+
 // Apply (or update) one peer. Safe to call repeatedly for the same peer --
 // `wg set ... peer <pub>` upserts.
 //
@@ -179,12 +193,9 @@ function ensureRoute(cidr, dev) {
 // routes through it (confirmed the hard way: a real encrypted handshake
 // completed between two containers with zero kernel route present, and
 // ping still showed 100% loss).
-function setPeer(name, { publicKey, endpoint, allowedIPs, keepalive }) {
-	const ips = allowedIPs || [];
-	const args = ['set', name, 'peer', publicKey, 'allowed-ips', ips.join(',')];
-	if (endpoint) args.push('endpoint', endpoint);
-	if (keepalive) args.push('persistent-keepalive', String(keepalive));
-	run('wg', args);
+function setPeer(name, peer) {
+	setPeerNoRoutes(name, peer);
+	const ips = peer.allowedIPs || [];
 
 	for (const cidr of ips) {
 		const add = tryRun('ip', ['route', 'add', cidr, 'dev', name]);
@@ -265,6 +276,7 @@ module.exports = {
 	listPeers,
 	ensureRoute,
 	setPeer,
+	setPeerNoRoutes,
 	removePeer,
 	interfaceExists,
 	peerStatus

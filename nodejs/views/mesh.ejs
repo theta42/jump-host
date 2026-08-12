@@ -62,6 +62,11 @@
 		<div class="card-body p-0" id="mesh-clients-wrap"><div class="text-center py-4 text-muted">Loading...</div></div>
 	</div>
 
+	<div class="card shadow-sm mb-4">
+		<div class="card-header"><i class="fa-solid fa-globe me-2"></i>Internet Exits</div>
+		<div class="card-body p-0" id="mesh-exits-wrap"><div class="text-center py-4 text-muted">Loading...</div></div>
+	</div>
+
 	<div class="card shadow-sm">
 		<div class="card-header"><i class="fa-solid fa-right-left me-2"></i>LAN Mapping</div>
 		<div class="card-body p-0" id="mesh-netmap-wrap"><div class="text-center py-4 text-muted">Loading...</div></div>
@@ -86,6 +91,7 @@ function loadStatus() {
 		renderSummary(data);
 		renderSites(data);
 		renderClients(data);
+		renderExits(data);
 		renderNetmaps(data);
 	});
 }
@@ -111,6 +117,13 @@ function renderAlerts(d) {
 	if (d.planned && d.planned.netmaps && d.planned.netmaps.length && !d.netmapAvailable) {
 		alerts.push(['danger', 'A LAN mapping is configured but this kernel has no NETMAP target — the mapping cannot be applied.']);
 	}
+	// A device pointed at an exit that cannot be built keeps working, but with
+	// local breakout instead of the exit its owner picked. Say so by name.
+	(d.planned && d.planned.exitProblems || []).forEach(function(p){
+		alerts.push(['warning', 'Device <code>' + esc(p.client) + '</code> is set to exit through site '
+			+ esc(p.exitSiteId) + ', which cannot be used: ' + esc(p.reason)
+			+ '. Its traffic is breaking out locally instead.']);
+	});
 	$('#mesh-alerts').html(alerts.map(function(a){
 		return '<div class="alert alert-' + a[0] + ' small py-2">' + a[1] + '</div>';
 	}).join(''));
@@ -179,6 +192,40 @@ function renderClients(d) {
 	$('#mesh-clients-wrap').html('<div class="table-responsive"><table class="table table-striped mb-0 align-middle">'
 		+ '<thead><tr><th>Device</th><th>Tunnel</th><th>Address</th><th>Exit</th></tr></thead>'
 		+ '<tbody>' + rows + '</tbody></table></div>');
+}
+
+function renderExits(d) {
+	var exits = (d.planned && d.planned.exits) || [];
+	if (!exits.length) {
+		$('#mesh-exits-wrap').html('<div class="text-center py-4 text-muted">No exits in use.'
+			+ '<br><small>Each device that picks an exit gets one here. Exits are chosen per device in the directory.</small></div>');
+		return;
+	}
+	var live = d.exitLive || {};
+	var rules = (d.planned && d.planned.exitRules) || [];
+	var rows = exits.map(function(e){
+		var status = live[e.siteId];
+		// Each exit interface has exactly one peer -- the exit gateway.
+		var peerStatus = null;
+		if (status && status.peers) {
+			var keys = Object.keys(status.peers);
+			if (keys.length) peerStatus = status.peers[keys[0]];
+		}
+		var count = rules.filter(function(r){ return r.exitSiteId === e.siteId; }).length;
+		return '<tr>'
+			+ '<td>' + esc(e.slug) + ' <span class="badge bg-primary ms-1">' + esc(e.siteId) + '</span></td>'
+			+ '<td>' + (status ? tunnelBadge(peerStatus) : '<span class="badge text-bg-secondary">Not applied</span>') + '</td>'
+			+ '<td><code class="small">' + esc(e.iface) + '</code></td>'
+			+ '<td><code class="small text-primary">' + esc(e.endpoint) + '</code></td>'
+			+ '<td>' + count + ' device' + (count === 1 ? '' : 's') + '</td>'
+			+ '</tr>';
+	}).join('');
+	$('#mesh-exits-wrap').html('<div class="table-responsive"><table class="table table-striped mb-0 align-middle">'
+		+ '<thead><tr><th>Exit site</th><th>Tunnel</th><th>Interface</th><th>Endpoint</th><th>In use by</th></tr></thead>'
+		+ '<tbody>' + rows + '</tbody></table>'
+		+ '<div class="p-3 small text-muted border-top">Each exit is a separate WireGuard interface, because only one peer per '
+		+ 'interface can hold the default route. Devices are steered to one with a routing rule, so changing a device\'s exit '
+		+ 'never changes its configuration.</div></div>');
 }
 
 function renderNetmaps(d) {

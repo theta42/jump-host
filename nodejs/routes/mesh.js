@@ -17,6 +17,7 @@ const middleware = require('../middleware/auth');
 const wgIface = require('../utils/wg_iface');
 const netRouter = require('../utils/net_router');
 const meshState = require('../services/mesh_state');
+const exitRouter = require('../services/exit_router');
 const directory = require('../services/directory_client');
 const { meshIp, siteCidr } = require('../utils/mesh_addressing');
 
@@ -61,6 +62,13 @@ router.get('/status', middleware.auth, middleware.requireJumpAdmin, async (req, 
 		const site = roster.value && (roster.value.sites || []).find((s) => Number(s.siteId) === Number(siteId));
 		const plan = peers.value ? meshState.planReconcile(peers.value, clients.value, site) : { ready: false, peers: [], netmaps: [] };
 		const live = liveState();
+		// Exits are separate interfaces, so their health is separate too -- a
+		// working mesh with a dead exit is a real and confusing state.
+		const exitPlan = exitRouter.planExits(
+			(clients.value && clients.value.clients) || [],
+			(roster.value && roster.value.sites) || [],
+			siteId
+		);
 
 		res.json({
 			status: 'ok',
@@ -83,9 +91,16 @@ router.get('/status', middleware.auth, middleware.requireJumpAdmin, async (req, 
 					endpoint: p.endpoint, allowedIPs: p.allowedIPs,
 					exitSiteId: p.exitSiteId === undefined ? null : p.exitSiteId
 				})),
-				netmaps: plan.netmaps || []
+				netmaps: plan.netmaps || [],
+				exits: exitPlan.exits.map((e) => ({
+					siteId: e.siteId, slug: e.slug, iface: e.iface, table: e.table, endpoint: e.endpoint
+				})),
+				exitRules: exitPlan.rules,
+				// Devices pointed at an exit that cannot be built, and why.
+				exitProblems: exitPlan.unusable
 			},
-			live
+			live,
+			exitLive: exitRouter.exitStatus()
 		});
 	} catch (e) { next(e); }
 });
