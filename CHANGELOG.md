@@ -1,3 +1,14 @@
+## v3.1.3
+
+- fix: **upgrading an already-running gateway no longer fails the port check.**
+  The pre-install `ss -lntp` conflict check could not tell the gateway's own
+  running SSH front door from an unrelated process, so re-running `install.sh`
+  to upgrade a live install died with "port 2222 is already in use" right
+  after the gateway had installed successfully. The check now only fails when
+  somebody other than the active `theta-gateway` service owns the port —
+  compare the listener's pid against the unit's MainPID (empty/0 means the
+  service is not running, which is a genuine conflict).
+
 ## v3.1.2
 
 - fix: **exit routing rules now read back in the form they were added.** The
