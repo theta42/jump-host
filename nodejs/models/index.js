@@ -67,3 +67,7 @@ if (conf.standalone && conf.standalone.enabled) {
 	ormReady = init({ conf: { orm: ormConf }, models: [require('./standalone_user'), require('./standalone_host')] });
 }
 module.exports.ormReady = ormReady;
+
+// Notification history (shape only, TTL-bounded) + per-user read watermark.
+require('./activity_event');
+require('./activity_seen');

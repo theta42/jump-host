@@ -13,6 +13,11 @@ router.use('/user', middleware.auth, require('./user'));
 // admin gate (see routes/api_token.js for why a token can't reach admin routes).
 router.use('/api-token', middleware.auth, require('./api_token'));
 
+// The notification feed: model events replayed through the same read gates that
+// decided who received them live (routes/activity.js). Mounted before the
+// catch-all jump router below, which would otherwise swallow it.
+router.use('/activity', middleware.auth, require('./activity'));
+
 // Mesh diagnostics and manual reconcile. All mesh CONFIGURATION lives in the
 // directory now (joining the directory is joining the mesh), so this is
 // read-mostly -- but it keeps its own per-route gates.

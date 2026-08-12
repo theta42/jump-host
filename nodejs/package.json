@@ -14,8 +14,8 @@
   "scripts": {
     "start": "node ./bin/www",
     "dev": "npx nodemon --ignore public/ ./bin/www",
-    "test": "NODE_ENV=test node --test --test-force-exit test/unit/access.test.js test/unit/host_keys.test.js test/unit/no_native_dialogs.test.js test/unit/target_match.test.js test/unit/username_grammar.test.js test/unit/mesh_addressing.test.js test/unit/mesh_state.test.js test/unit/net_router.test.js test/unit/exit_router.test.js",
-    "test:unit": "NODE_ENV=test node --test --test-force-exit test/unit/*.test.js",
+    "test": "NODE_ENV=test node --test --test-force-exit test/unit/socket_pubsub.test.js test/unit/access.test.js test/unit/host_keys.test.js test/unit/no_native_dialogs.test.js test/unit/target_match.test.js test/unit/username_grammar.test.js test/unit/mesh_addressing.test.js test/unit/mesh_state.test.js test/unit/net_router.test.js test/unit/exit_router.test.js",
+    "test:unit": "NODE_ENV=test node --test --test-force-exit test/unit/socket_pubsub.test.js test/unit/*.test.js",
     "test:integration": "NODE_ENV=test node --test --test-force-exit test/integration/*.test.js"
   },
   "dependencies": {
@@ -24,7 +24,7 @@
     "@simpleworkjs/bao-conf": "^1.0.0",
     "@simpleworkjs/conf": "^1.2.0",
     "@simpleworkjs/directory-schema": "^1.0.0",
-    "@simpleworkjs/frontend": "^0.3.0",
+    "@simpleworkjs/frontend": "^0.4.0",
     "@simpleworkjs/ldap": "^1.0.1",
     "@simpleworkjs/oidc-client": "^1.0.0",
     "@simpleworkjs/orm": "^0.2.8",

@@ -8,6 +8,7 @@
 const crypto = require('crypto');
 const conf = require('@simpleworkjs/conf');
 const { getRedis } = require('./index');
+const modelEvents = require('../utils/model_events');
 
 const P = () => conf.redis.prefix;
 const idxKey = () => `${P()}audit_index`;
@@ -28,6 +29,10 @@ async function create(fields) {
 		...fields,
 	};
 	await write(event);
+	// A connection attempt is the event people actually want to know about here.
+	// Announced on the standard contract; the socket gate is jump-admin, which
+	// matches the audit REST route.
+	modelEvents.emit('AuditEvent', 'create', id, event);
 	return {
 		id,
 		event,
@@ -41,6 +46,9 @@ async function create(fields) {
 				durationMs: Date.now() - event.startedAt,
 			});
 			await write(event);
+			// The session ending is worth hearing about too — that is when
+			// success/failure and the byte counts are actually known.
+			modelEvents.emit('AuditEvent', 'update', id, event);
 		},
 	};
 }

@@ -46,6 +46,13 @@ require('@simpleworkjs/bao-conf').init({ path: 'jump-host', conf }).then(async (
 	io.use(middleware.authIO);
 	app.io = io;
 
+	// Model events -> the sockets allowed to see them. Unlike the sibling apps
+	// this arrives with its read gate rather than after one; see
+	// utils/socket_pubsub.js.
+	const {ps} = require('../controller');
+	require('../utils/socket_pubsub').attach(io, ps);
+	require('../utils/model_events').bind(require('../utils/socket_pubsub').liveBus(ps));
+
 	server.listen(webPort, () => {
 		console.log(`[web] jump-host UI/API on :${server.address().port}`);
 	});

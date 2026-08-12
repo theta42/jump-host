@@ -1,6 +1,7 @@
 'use strict';
 
 const Table = require('.');
+const {withEvents} = require('../utils/model_events');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 
@@ -78,6 +79,12 @@ class ApiToken extends Table{
 	}
 }
 
+// Announce create/remove so a token issued or revoked in one tab updates the
+// list in another. Not update: the best-effort last_used_on write happens on
+// every authenticated API call, and announcing that would put an event on the
+// socket per request. secret_hash is isPrivate, so model-redis strips it in
+// toJSON and it never reaches the bus.
+withEvents(ApiToken, 'ApiToken', {actions: ['create', 'remove']});
 ApiToken.register();
 
 module.exports = {ApiToken};

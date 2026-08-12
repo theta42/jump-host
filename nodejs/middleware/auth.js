@@ -83,6 +83,12 @@ async function authIO(socket, next){
 		if(!tok) return next(Auth.errors.login());
 		const token = await Auth.checkToken(tok);
 		socket.user = token.user;
+		// Group memberships captured at login. The socket read gate
+		// (utils/socket_pubsub.js) resolves what this identity may see from
+		// them — without them a jump admin would be treated as ungrouped and
+		// see nothing.
+		socket.groups = typeof token.groupsArray === 'function' ? token.groupsArray() : [];
+		socket.isAdmin = isAdmin({user: socket.user, groups: socket.groups});
 		next();
 	}catch(error){
 		next(error);
