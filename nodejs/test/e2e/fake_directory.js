@@ -22,11 +22,16 @@ const SITES = [
 	{ siteId: 3, slug: 'home', isHub: false, exitOpen: false, lan168: '192.168.1.0/24', endpointHost: 'gateway-3' }
 ];
 
-// Devices, keyed by the site they belong to. Their public keys are fixed so the
-// test can assert on them; nothing dials these, they only have to appear as
-// peers with the right AllowedIPs.
+// Devices, keyed by the site they belong to. Nothing dials these -- they only
+// have to appear as peers with the right AllowedIPs -- so the key is DERIVED
+// rather than written as a literal. A 44-character base64 blob next to
+// `publicKey` is indistinguishable from a real credential to a secret scanner,
+// and it is right to complain: nothing in a committed file should look like
+// one.
+const fakeKey = (seed) => Buffer.from(`fake-wg-key-for-${seed}`.padEnd(32, '.')).toString('base64');
+
 const CLIENTS = {
-	2: [{ id: 'c1', uid: 'alice', name: 'laptop', publicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', assignedIp: '10.2.128.1', exitSiteId: 1 }],
+	2: [{ id: 'c1', uid: 'alice', name: 'laptop', publicKey: fakeKey('alice-laptop'), assignedIp: '10.2.128.1', exitSiteId: 1 }],
 	3: []
 };
 
