@@ -1,3 +1,28 @@
+## v3.2.0
+
+- feat: **notifications, with history and a bell.** This app pushed nothing over
+  its socket before — it was attached only so the shared front-end kept working.
+  Everything here arrives *with* its read gate rather than after one, which is
+  the ordering the sibling apps had to be retrofitted into.
+- feat: **the SSH audit trail is the event stream.** Who connected to which
+  host, announced on the attempt and again when the session ends and its
+  success and byte counts are known. Gated to jump admins, matching the audit
+  API.
+- feat: `ApiToken` announces create and remove only — its best-effort
+  `last_used_on` write happens on every authenticated API call, and announcing
+  that would put an event on the socket per request. Owner-scoped with no admin
+  bypass: a personal access token is nobody else's business, and the REST route
+  agrees.
+- feat: an in-process pub/sub bus (`controller/pubsub`). The sibling apps use
+  p2psub to gossip between processes; this is one process, so it is an
+  EventEmitter with the same API surface — and it matches against the RegExp
+  itself rather than stringifying and rebuilding it, which is the bug that
+  silently killed every regex subscription in `@simpleworkjs/backend`.
+- feat: `authIO` carries the session's groups and admin flag, which the
+  jump-admin gate resolves from.
+- chore: the notification client comes from `@simpleworkjs/frontend` 0.4.0;
+  this app supplies only its link map.
+
 ## v3.1.6
 
 - chore: picks up `@simpleworkjs/frontend` 0.3.1 (filtered rows carrying a
