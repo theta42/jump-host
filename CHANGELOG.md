@@ -1,3 +1,6 @@
+## v3.3.1
+- fix: bumped `@simpleworkjs/frontend` to v0.4.1 — `app.messages.confirm(message, null, type)` (a documented, commonly used form for a page with no inline `.actionMessage`) threw `Cannot read properties of null (reading 'closest')` instead of showing the dialog, and `confirm()` had no toast fallback at all for that case (it just warned and left its promise pending forever). No jump-host page hit this today, but every consumer shares the same vendored copy — fixed here to keep the fleet on the patched version.
+
 ## v3.3.0
 - fix: **mDNS local-discovery could announce a Docker bridge IP instead of the
   real LAN address.** `bonjour-service` builds an address record from *every*
