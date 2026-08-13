@@ -1,3 +1,21 @@
+## v3.3.0
+- fix: **mDNS local-discovery could announce a Docker bridge IP instead of the
+  real LAN address.** `bonjour-service` builds an address record from *every*
+  local interface with no filtering, so on this host (which also runs
+  Docker, alongside `theta-gateway` running directly on the host for its
+  networking) the announcement could resolve to a `docker0`/`br-*` bridge
+  gateway address — reproduced live against a real theta-agent: "announced
+  locally at 172.18.0.1 ... failed to pin a direct host route: no local
+  interface contains 172.18.0.1". The published service's `records()` is now
+  patched to drop A/AAAA records from known virtual/bridge interfaces.
+- feat: **richer `_theta-suite._tcp` TXT payload**: `directoryHost` (the
+  directory's own public hostname, distinct from the full `hosts` list),
+  `directoryAddr` (an explicit `<real LAN IP>:<port>` computed from the same
+  filtered interface list — not left to the mDNS response's own address),
+  and `version` (`THETA_SUITE_VERSION`). Lays the groundwork for a roaming
+  agent or a fresh install to identify which site's directory it's near,
+  not just skip the relay for a hostname it already knows.
+
 ## v3.2.1
 - fix: **the notification bell broke the nav bar.** The container holding username / bell / Log Out is `.form-inline`, a Bootstrap 4 class that does not exist in Bootstrap 5 — it laid out only because everything inside it happened to be an inline element. The bell is a `<div class="dropdown">` (Bootstrap requires that), so it forced a line break and pushed Log Out onto a third row. Replaced with `d-flex align-items-center`, which is what makes a row in Bootstrap 5 and does not depend on what the children are.
 
