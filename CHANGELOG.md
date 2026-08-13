@@ -1,3 +1,6 @@
+## v3.2.1
+- fix: **the notification bell broke the nav bar.** The container holding username / bell / Log Out is `.form-inline`, a Bootstrap 4 class that does not exist in Bootstrap 5 — it laid out only because everything inside it happened to be an inline element. The bell is a `<div class="dropdown">` (Bootstrap requires that), so it forced a line break and pushed Log Out onto a third row. Replaced with `d-flex align-items-center`, which is what makes a row in Bootstrap 5 and does not depend on what the children are.
+
 ## v3.2.0
 
 - feat: **notifications, with history and a bell.** This app pushed nothing over
