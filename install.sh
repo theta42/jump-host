@@ -124,13 +124,24 @@ mkdir -p "$APP_ROOT" "$CONFIG_DIR" "$DATA_DIR" "$REDIS_DIR"
 chmod 700 "$CONFIG_DIR"
 
 # Replace the tree rather than merging into it, so a file deleted upstream does
-# not linger and get loaded by a later release.
-rm -rf "$APP_ROOT/nodejs"
-mkdir -p "$APP_ROOT/nodejs"
-tar -C "$SRC/nodejs" --exclude=node_modules --exclude=.git -cf - . | tar -C "$APP_ROOT/nodejs" -xf -
+# not linger and get loaded by a later release. Keep existing node_modules to avoid
+# a slow clean download on every update when dependencies haven't changed.
+if [[ -d "$APP_ROOT/nodejs/node_modules" ]]; then
+	TEMP_MODULES="$(mktemp -d)"
+	mv "$APP_ROOT/nodejs/node_modules" "$TEMP_MODULES/"
+	rm -rf "$APP_ROOT/nodejs"
+	mkdir -p "$APP_ROOT/nodejs"
+	tar -C "$SRC/nodejs" --exclude=node_modules --exclude=.git -cf - . | tar -C "$APP_ROOT/nodejs" -xf -
+	mv "$TEMP_MODULES/node_modules" "$APP_ROOT/nodejs/"
+	rm -rf "$TEMP_MODULES"
+else
+	rm -rf "$APP_ROOT/nodejs"
+	mkdir -p "$APP_ROOT/nodejs"
+	tar -C "$SRC/nodejs" --exclude=node_modules --exclude=.git -cf - . | tar -C "$APP_ROOT/nodejs" -xf -
+fi
 
 info "Installing production dependencies..."
-( cd "$APP_ROOT/nodejs" && npm ci --omit=dev --silent 2>/dev/null || npm install --omit=dev --silent )
+( cd "$APP_ROOT/nodejs" && npm ci --omit=dev --prefer-offline --silent 2>/dev/null || npm install --omit=dev --silent )
 
 # ── redis ────────────────────────────────────────────────────────────────────
 # Bound to loopback explicitly. In a container this was implicitly private; on
