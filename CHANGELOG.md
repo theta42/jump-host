@@ -1,3 +1,6 @@
+## v3.3.5
+- fix: **`install.sh` no longer aborts with `JUMP_HOST: unbound variable`.** The v3.3.4 default `${JUMP_HOST}:${JUMP_WG_PORT:-51820}` referenced `JUMP_HOST` under `set -u`, so a first install with no `JUMP_HOST` exported died mid-setup instead of writing `gateway.env`. It now defaults to an empty endpoint (site reaches out through the hub) when `JUMP_HOST` is unset, matching the documented behaviour.
+
 ## v3.3.4
 - fix: **`install.sh` no longer leaves `THETA_MESH_ENDPOINT` blank.** The gateway's default `gateway.env` wrote `THETA_MESH_ENDPOINT=` with no value, so a site with a public hostname had to set it by hand before other sites could dial it directly. It now defaults to `${JUMP_HOST}:${JUMP_WG_PORT:-51820}` when the installer creates the file, matching the value `setup.sh` already writes on re-runs.
 
