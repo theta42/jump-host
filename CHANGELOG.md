@@ -1,3 +1,7 @@
+## v3.3.3
+- fix: **the "WireGuard" nav item 404'd.** The mesh-v2 rewrite (`e6ad8eb`, "gateway becomes a roster-driven router") deleted `views/wireguard.ejs` and the `/wireguard` route, replacing them with `/mesh` — but left the nav entry pointing at the old path. Every admin has had a menu item that leads to a 404 since that release. Removed.
+- test: `test/unit/nav_routes.test.js` asserts that every nav href has both a `router.get` in `routes/render.js` and a `views/<name>.ejs` to render. Nothing connected those two declarations before, which is why a dangling link survived several releases; the test fails on the exact shipped state.
+
 ## v3.3.2
 - feat: **interactive notification controls and live toast popups.** Adopted `@simpleworkjs/frontend` 0.4.2 with live in-app toast alerts (`toast: true`) for foreground real-time notifications, rich FontAwesome model category icons with semantic badge coloring, and interactive dropdown controls (*Mark all read*, *Clear list*).
 - perf: **`install.sh` preserves `node_modules` during tree replacements.** Drops upgrade execution time from ~15s to <1s when dependencies are unchanged.

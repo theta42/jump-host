@@ -37,7 +37,10 @@ module.exports = {
 	nav: [
 		{href: '/dashboard', icon: 'fa-solid fa-gauge-high', label: 'Dashboard', groups: []},
 		{href: '/sessions', icon: 'fa-solid fa-plug-circle-bolt', label: 'Sessions', groups: []},
-		{href: '/wireguard', icon: 'fa-solid fa-shield-halved', label: 'WireGuard', groups: ['admin', 'app_jump_admin']},
+		// No '/wireguard' entry: the mesh-v2 rewrite (e6ad8eb, "gateway becomes a
+		// roster-driven router") deleted views/wireguard.ejs and its route and
+		// replaced them with '/mesh'. The nav item was left behind, so every
+		// admin saw a "WireGuard" menu entry that 404s.
 		{href: '/mesh', icon: 'fa-solid fa-diagram-project', label: 'Mesh', groups: ['admin', 'app_jump_admin']},
 		{href: '/audit', icon: 'fa-solid fa-clipboard-list', label: 'Audit', groups: ['admin', 'app_jump_admin']},
 	],
