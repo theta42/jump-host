@@ -1,3 +1,6 @@
+## v3.3.4
+- fix: **`install.sh` no longer leaves `THETA_MESH_ENDPOINT` blank.** The gateway's default `gateway.env` wrote `THETA_MESH_ENDPOINT=` with no value, so a site with a public hostname had to set it by hand before other sites could dial it directly. It now defaults to `${JUMP_HOST}:${JUMP_WG_PORT:-51820}` when the installer creates the file, matching the value `setup.sh` already writes on re-runs.
+
 ## v3.3.3
 - fix: **the "WireGuard" nav item 404'd.** The mesh-v2 rewrite (`e6ad8eb`, "gateway becomes a roster-driven router") deleted `views/wireguard.ejs` and the `/wireguard` route, replacing them with `/mesh` — but left the nav entry pointing at the old path. Every admin has had a menu item that leads to a 404 since that release. Removed.
 - test: `test/unit/nav_routes.test.js` asserts that every nav href has both a `router.get` in `routes/render.js` and a `views/<name>.ejs` to render. Nothing connected those two declarations before, which is why a dangling link survived several releases; the test fails on the exact shipped state.

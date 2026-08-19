@@ -200,7 +200,8 @@ VAULT_TOKEN=
 # The host:port OTHER SITES dial for WireGuard. Publish it in DNS and open the
 # UDP port. Empty is legitimate -- this site then reaches out and is reached
 # back through the hub -- but nothing can dial it directly.
-THETA_MESH_ENDPOINT=
+# Defaults to this host's public jump hostname on the standard WireGuard port.
+THETA_MESH_ENDPOINT=${THETA_MESH_ENDPOINT:-${JUMP_HOST}:${JUMP_WG_PORT:-51820}}
 
 # SSH front door. Must not collide with this host's own sshd.
 JUMP_SSH_PORT=$SSH_PORT
