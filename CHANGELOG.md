@@ -1,3 +1,6 @@
+## v3.3.6
+- meta: **`package.json` version now matches the release tag.** It had lagged behind since v3.3.4 (still `3.3.3`), so the running app's build info (`utils/build_info.js`, surfaced in the UI/API) under-reported the deployed version. Now `3.3.6`, matching the `v3.3.6` tag.
+
 ## v3.3.5
 - fix: **`install.sh` no longer aborts with `JUMP_HOST: unbound variable`.** The v3.3.4 default `${JUMP_HOST}:${JUMP_WG_PORT:-51820}` referenced `JUMP_HOST` under `set -u`, so a first install with no `JUMP_HOST` exported died mid-setup instead of writing `gateway.env`. It now defaults to an empty endpoint (site reaches out through the hub) when `JUMP_HOST` is unset, matching the documented behaviour.
 
