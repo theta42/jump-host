@@ -1,3 +1,6 @@
+## [3.3.7] - 2026-08-22
+- Added docs/KNOWN_ISSUES.md for multi-site known limits and tradeoffs.
+
 ## v3.3.6
 - meta: **`package.json` version now matches the release tag.** It had lagged behind since v3.3.4 (still `3.3.3`), so the running app's build info (`utils/build_info.js`, surfaced in the UI/API) under-reported the deployed version. Now `3.3.6`, matching the `v3.3.6` tag.
 
