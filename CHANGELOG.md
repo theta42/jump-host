@@ -1,3 +1,7 @@
+## [3.3.8] - 2026-08-23
+- fix: **the notification bell broke the nav bar again — this is a regression, not a new bug.** The `.form-inline` → `d-flex align-items-center` fix shipped in #56 (commit `3c0498a`) was silently undone by `5f7e8a9`, the v3.3.2 interactive-notification-controls release, which carried a stale copy of `top.ejs` across the shared frontend rollout. `.form-inline` is a Bootstrap 4 class that does not exist in Bootstrap 5 (this app is on 5.3.8), so it applied nothing and the bell — a block-level `<div class="dropdown">` that `app.notify.js` reveals with `.show()`, i.e. `display: block` — broke out of the row and pushed Log Out onto a third line. `proxy` regressed identically in its own v2.4.2 rollout; the Directory escaped because its fix (#232) landed after.
+- fix: **the OIDC callback was registered against the wrong host during bootstrap.** Fixed in `theta-suite` (see v3.23.0): `bootstrap.js` built the jump host's `redirect_uri` from `sso.stack.ldapDomain` — the base-DN domain — while `setup.sh` derives the actual web host from `CFG_PUBLIC_DOMAIN`. `MULTI_SITE_SPEC` §4 explicitly allows those to diverge, so on any such site the SSO held a `redirect_uri` for a host this app never serves and SSO login failed. No change in this repo; noted here because the symptom appears here.
+
 ## [3.3.7] - 2026-08-22
 - Added docs/KNOWN_ISSUES.md for multi-site known limits and tradeoffs.
 
