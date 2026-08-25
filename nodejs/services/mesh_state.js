@@ -253,7 +253,14 @@ async function reconcileMesh() {
 			// So sites this gateway exits through can build a peer entry for
 			// its exit interfaces, which present this key rather than the mesh
 			// one.
-			gatewayExitPublicKey: exitKeys.publicKey
+			gatewayExitPublicKey: exitKeys.publicKey,
+			// A suggestion, not a publish. Sites had no resolver at all --
+			// nothing ever set dnsHost, so every client config went out with no
+			// `DNS =` line and devices on the tunnel resolved against whatever
+			// network they were physically on. The directory takes this only
+			// while an admin has not chosen one, so reconcile running on a
+			// timer cannot overwrite their answer.
+			dnsHostDetected: netRouter.detectResolver()
 		});
 	} catch (err) {
 		console.warn(`[mesh] could not publish this gateway's identity: ${err.message}`);

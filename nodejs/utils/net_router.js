@@ -205,6 +205,65 @@ function detectWanInterface() {
 	return m ? m[1] : null;
 }
 
+/**
+ * The site's DNS resolver, as an address on the site LAN.
+ *
+ * A client on the tunnel needs a resolver it can actually reach over the
+ * tunnel. Until now nothing ever supplied one: `dnsHost` was configurable and
+ * left null everywhere, so every pushed client config omitted `DNS =`
+ * entirely. A device with the tunnel up therefore kept using whatever resolver
+ * the network it was physically sitting on had handed it -- which resolves no
+ * internal name, and hands every lookup to a coffee-shop DHCP server while the
+ * user believes their traffic is protected.
+ *
+ * Two sources, best first:
+ *
+ *  1. A nameserver in /etc/resolv.conf that is a real private address. That is
+ *     the resolver this gateway itself was told to use, which is as close to
+ *     "the site's resolver" as anything on the box knows. Loopback entries are
+ *     skipped: 127.0.0.53 is systemd-resolved and 127.0.0.11 is Docker's
+ *     embedded DNS, and neither means anything to a client on the far end.
+ *  2. The default-route gateway, when it is private. On a small site the LAN
+ *     router is the DNS server essentially always.
+ *
+ * Only ever a SUGGESTION -- published as `dnsHostDetected`, and the directory
+ * takes it only while an admin has not set one (utils/mesh_roster.js). A wrong
+ * guess is cheap: the directory refuses to push an address that is not inside
+ * a mapped LAN, so the client config comes out exactly as it does today.
+ */
+function detectResolver() {
+	const res = tryRun('cat', ['/etc/resolv.conf']);
+	if (res.ok) {
+		for (const line of res.out.split('\n')) {
+			const m = /^\s*nameserver\s+(\S+)/.exec(line);
+			if (m && isPrivateIPv4(m[1])) return m[1];
+		}
+	}
+	const route = tryRun('ip', ['-o', 'route', 'show', 'default']);
+	if (route.ok) {
+		// "default via 192.168.1.1 dev enp3s0 proto dhcp metric 100"
+		const m = /\svia\s+(\S+)/.exec(route.out.split('\n')[0] || '');
+		if (m && isPrivateIPv4(m[1])) return m[1];
+	}
+	return null;
+}
+
+/**
+ * RFC1918 only, and deliberately not loopback: a resolver a client cannot
+ * reach over the tunnel is worse than none, because it replaces a working
+ * local resolver with a dead one.
+ */
+function isPrivateIPv4(addr) {
+	const parts = String(addr).split('.');
+	if (parts.length !== 4) return false;
+	const [a, b] = parts.map(Number);
+	if (parts.some((p) => !/^\d{1,3}$/.test(p) || Number(p) > 255)) return false;
+	if (a === 10) return true;
+	if (a === 172 && b >= 16 && b <= 31) return true;
+	if (a === 192 && b === 168) return true;
+	return false;
+}
+
 /** Does this kernel have the NETMAP target available? */
 function netmapAvailable() {
 	if (!haveIptables()) return false;
@@ -218,6 +277,6 @@ function netmapAvailable() {
 
 module.exports = {
 	applySysctls, applyForwarding, applyNetmap, removeNetmap,
-	detectWanInterface, netmapAvailable, missingTools, ensureRule, removeRule,
+	detectWanInterface, detectResolver, isPrivateIPv4, netmapAvailable, missingTools, ensureRule, removeRule,
 	_run: run, _tryRun: tryRun, _resetToolCache: () => { toolCache = null; }
 };
