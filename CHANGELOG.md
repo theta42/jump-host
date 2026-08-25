@@ -1,3 +1,10 @@
+## [3.5.0] - 2026-08-25
+
+### Added
+- **Gateways publish the site's DNS resolver.** `dnsHost` was configurable in the directory from the first release and left null on every site, because nothing ever supplied a value — so every client config went out with no `DNS =` line and a device on the tunnel resolved against whatever network it was physically sitting on. `detectResolver()` takes the first private nameserver in `/etc/resolv.conf`, falling back to the default-route gateway; loopback stubs (`127.0.0.53` systemd-resolved, `127.0.0.11` Docker) and public resolvers are skipped, because a resolver a client cannot reach over the tunnel is worse than none.
+
+  Published as `dnsHostDetected`, which the directory takes only while an admin has not chosen one — reconcile runs on a timer, so publishing a guess as `dnsHost` would overwrite their answer every few minutes. A wrong guess is cheap: the directory refuses to push an address outside a mapped LAN, so the config comes out exactly as it does today.
+
 ## [3.4.0] - 2026-08-25
 - fix: **`isCatalogHost` now actually filters.** It excludes resources the SSO merely *discovered* and nobody promoted, by reading `managed` and `discovery_sources` — but neither key was declared in `@simpleworkjs/directory-schema`'s `METADATA_KEYS`, so `projectResource()` stripped both before they reached this app. And this app is a machine caller, which `isDirectoryAdmin()` never treats as an admin. Every resource therefore arrived with neither field, `autoDiscovered` computed `false`, and the filter returned `true` for everything it was asked about — including the unpromoted Proxmox guests and UniFi clients that v3.3.0 believed it had excluded.
 

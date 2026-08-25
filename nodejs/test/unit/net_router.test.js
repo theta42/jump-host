@@ -192,3 +192,59 @@ test('a kernel WITH NETMAP is not mistaken for a missing one', () => {
 		Object.assign(new Error('no rule'), { stderr: Buffer.from('iptables: Bad rule (does a matching rule exist in that chain?)') });
 	assert.strictEqual(netRouter.netmapAvailable(), true);
 });
+
+// ── the site resolver ───────────────────────────────────────────────────────
+//
+// Sites shipped with dnsHost null and nothing ever set it, so every client
+// config went out with no `DNS =` line: a device with the tunnel up resolved
+// against whatever network it was physically sitting on, which resolves no
+// internal name and hands every lookup to a coffee-shop DHCP server while the
+// user believes their traffic is protected.
+
+test('the resolver comes from resolv.conf when it is a real LAN address', () => {
+	responses['cat /etc/resolv.conf'] = 'search lan\nnameserver 192.168.1.53\nnameserver 8.8.8.8\n';
+	assert.strictEqual(netRouter.detectResolver(), '192.168.1.53');
+});
+
+// 127.0.0.53 is systemd-resolved and 127.0.0.11 is Docker's embedded DNS.
+// Neither means anything to a client on the far end of the tunnel, and
+// pushing one replaces a working local resolver with a dead one.
+test('a loopback stub resolver is never published', () => {
+	responses['cat /etc/resolv.conf'] = 'nameserver 127.0.0.53\n';
+	responses['ip -o route show default'] = 'default via 192.168.1.1 dev enp3s0 proto dhcp metric 100\n';
+	assert.strictEqual(netRouter.detectResolver(), '192.168.1.1');
+});
+
+test('a public resolver is never published either', () => {
+	responses['cat /etc/resolv.conf'] = 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n';
+	responses['ip -o route show default'] = 'default via 10.20.0.1 dev eth0\n';
+	assert.strictEqual(netRouter.detectResolver(), '10.20.0.1');
+});
+
+test('a gateway with nothing private to offer publishes nothing', () => {
+	responses['cat /etc/resolv.conf'] = 'nameserver 1.1.1.1\n';
+	responses['ip -o route show default'] = 'default via 203.0.113.1 dev eth0\n';
+	assert.strictEqual(netRouter.detectResolver(), null);
+});
+
+test('an unreadable resolv.conf falls through to the default route', () => {
+	responses['cat /etc/resolv.conf'] = missing();
+    responses['ip -o route show default'] = 'default via 172.16.0.1 dev eth0\n';
+	assert.strictEqual(netRouter.detectResolver(), '172.16.0.1');
+});
+
+test('a host with no default route at all is not an error', () => {
+	responses['cat /etc/resolv.conf'] = missing();
+	responses['ip -o route show default'] = missing();
+	assert.strictEqual(netRouter.detectResolver(), null);
+});
+
+test('private ranges are classified by RFC1918, not by looking familiar', () => {
+	for (const addr of ['10.0.0.1', '10.255.255.254', '172.16.0.1', '172.31.255.1', '192.168.1.1']) {
+		assert.ok(netRouter.isPrivateIPv4(addr), `${addr} is private`);
+	}
+	for (const addr of ['172.15.0.1', '172.32.0.1', '192.169.1.1', '127.0.0.1', '8.8.8.8',
+		'', '192.168.1', '192.168.1.1.1', '999.1.1.1', 'not-an-ip']) {
+		assert.ok(!netRouter.isPrivateIPv4(addr), `${addr} is not private`);
+	}
+});
