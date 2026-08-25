@@ -57,6 +57,20 @@ if (conf.standalone && conf.standalone.enabled) {
 	// The two copies of this rule have already drifted apart once (unpromoted
 	// Proxmox VMs showing up in the picker); if a third consumer needs it,
 	// hoist it into @simpleworkjs/directory-schema rather than copying again.
+	//
+	// KNOWN LIMITATION -- this filter cannot see what it keys on.
+	// `managed` and `discovery_sources` are not declared in
+	// @simpleworkjs/directory-schema's METADATA_KEYS, so projectResource()
+	// strips both for any caller that is not a directory admin -- and
+	// isDirectoryAdmin() is false for `isMachine`, which is what jump-host is.
+	// Every resource therefore arrives with neither field, `autoDiscovered`
+	// computes false, and this returns true for everything.
+	//
+	// accessibleHosts() is unaffected in practice: the SSO applies the same
+	// catalog rule server-side before answering /api/discovery/access/:uid, so
+	// nothing unpromoted is in the list to begin with. allHosts() -- the
+	// unfiltered admin view -- IS affected. Fixing it properly means declaring
+	// the two keys in directory-schema.
 	function isCatalogHost(r) {
 		if (!r || r.kind !== 'host') return false;
 		const meta = r.metadata || {};

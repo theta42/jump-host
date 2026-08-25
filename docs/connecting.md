@@ -82,6 +82,24 @@ rule the SSO's own Directory listing does: a resource carrying
 promoted ones are included. Previously the filter treated a missing `managed`
 flag as permission, so unpromoted discovery results showed up in the picker.
 
+**A host running theta-agent is a jump target automatically.** Installing the
+agent needs root on that machine *and* a join key from the directory, so the
+machine is already under management — and a second, per-host grant before it
+could be reached added nothing. Any user whose groups already grant access to
+hosts at that site (`god_admin`, `{site}_super_admin`, or the
+`{site}_hosts_access` / `{site}_hosts_admin` aggregate — see
+[GROUPS.md](../../GROUPS.md)) sees every agent host at that site in the picker,
+with no `<slug>_access` group to create first.
+
+The rule is narrow on purpose:
+
+- only **hosts**, and only subtypes that are a machine you log into. An iLO/BMC
+  out-of-band controller is never offered, agent or not.
+- only while the agent is **still enrolled**. Revoking or deleting an
+  enrolment removes the host from the picker immediately; it does not wait for
+  a reconnect, and it is not fooled by the `agentId` the resource keeps.
+- hosts **without** an agent are unchanged — they still need an explicit grant.
+
 > On a [standalone](architecture.html#standalone-mode) jump host (no LDAP/SSO),
 > every registered host is reachable by every registered user — there's no
 > group-based restriction to ask an admin about.
