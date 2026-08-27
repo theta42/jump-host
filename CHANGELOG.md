@@ -1,4 +1,7 @@
-## [3.5.0] - 2026-08-25
+## [3.6.0] - 2026-08-27
+
+### Changed
+- **SSH host keys now persist across rebuilds.** `hostKeyPath` moved from `/var/lib/jump-host/keys` (a Docker named volume that `down -v` wipes) to `/opt/theta-suite/.persist/jump-host/keys` — outside the application tree so keys survive container rebuilds, host reinstalls, and are backed up with the rest of the theta-suite checkout. `docker-compose.yml` bind-mounts `.persist/jump-host` instead of using a named volume. `install.sh` and `bootstrap.js` updated to match. `.persist/` is gitignored.
 
 ### Added
 - **Gateways publish the site's DNS resolver.** `dnsHost` was configurable in the directory from the first release and left null on every site, because nothing ever supplied a value — so every client config went out with no `DNS =` line and a device on the tunnel resolved against whatever network it was physically sitting on. `detectResolver()` takes the first private nameserver in `/etc/resolv.conf`, falling back to the default-route gateway; loopback stubs (`127.0.0.53` systemd-resolved, `127.0.0.11` Docker) and public resolvers are skipped, because a resolver a client cannot reach over the tunnel is worse than none.

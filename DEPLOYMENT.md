@@ -34,7 +34,8 @@ re-run `./setup.sh`.
 ```
 /etc/theta-gateway/gateway.env      # env the systemd unit loads (edit freely)
 /etc/theta-gateway/jump-secrets.js  # LDAP bind, SSO API token, OIDC client
-/var/lib/theta-gateway/             # host keys, Redis data (AOF)
+/var/lib/theta-gateway/             # Redis data (AOF) — WireGuard identity, sessions
+/opt/theta-suite/.persist/jump-host/keys  # SSH host keys (survives rebuilds/backups)
 ```
 
 `gateway.env` is written once on first install and left alone on upgrades, so
@@ -46,6 +47,10 @@ The gateway's WireGuard identity and SSH host keys must survive restarts —
 every peer in the cluster holds the public halves. `--uninstall` deliberately
 keeps `/etc/theta-gateway` and `/var/lib/theta-gateway`; delete them only if
 this site is gone for good.
+
+SSH host keys are stored at `/opt/theta-suite/.persist/jump-host/keys` —
+outside the application tree so they survive container rebuilds, host
+reinstalls, and are backed up with the rest of the theta-suite checkout.
 
 ## The LDAP write-ACL (required)
 

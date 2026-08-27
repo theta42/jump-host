@@ -20,7 +20,4 @@ services:
       - NODE_ENV=production
     volumes:
       - ./config:/config:ro       # optional: jump-secrets.js
-      - jump-data:/var/lib/jump-host   # host keys persist across restarts
-
-volumes:
-  jump-data:
+      - ./.persist/jump-host:/var/lib/jump-host   # host keys persist across rebuilds

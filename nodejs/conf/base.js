@@ -35,7 +35,10 @@ module.exports = {
 		listenHost: '0.0.0.0',
 		listenPort: 2222,
 		// Directory the generated host keys live in (created on first boot).
-		hostKeyPath: '/var/lib/jump-host/keys',
+		// Persisted in the theta-suite checkout so host keys survive container
+		// rebuilds and host reinstalls — clients pin these, so losing them makes
+		// every user see a host-key-changed warning.
+		hostKeyPath: '/opt/theta-suite/.persist/jump-host/keys',
 		banner: '',
 		// Password auth policy: 'off' (keys only), 'local' (passwords allowed
 		// only from loopback/RFC1918 client addresses — keys-only from the

@@ -1,7 +1,7 @@
 {
   "name": "theta-gateway",
-  "version": "3.5.0",
-  "description": "SSH jump host for the theta42 stack — LDAP-authenticated, directory-driven host bridging with audit and metrics",
+  "version": "3.6.0",
+  "description": "SSH jump host for the theta42 stack \u2014 LDAP-authenticated, directory-driven host bridging with audit and metrics",
   "author": [
     {
       "name": "William Mantly",

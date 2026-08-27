@@ -210,7 +210,9 @@ REDIS_DATA_DIR=$REDIS_DIR
 
 # SSH host keys. Generated on first boot and then stable -- clients pin them,
 # so losing these makes every user see a host-key-changed warning.
-app_ssh__hostKeyPath=$DATA_DIR/keys
+# Persisted in the theta-suite checkout so keys survive host reinstalls and
+# container rebuilds. Back up this directory with the rest of /opt/theta-suite.
+app_ssh__hostKeyPath=/opt/theta-suite/.persist/jump-host/keys
 EOF
 else
 	info "Keeping the existing $CONFIG_DIR/gateway.env"
