@@ -142,6 +142,50 @@ test('no devices means no exit configuration at all', () => {
 	assert.deepStrictEqual(plan.rules, []);
 	assert.deepStrictEqual(plan.unusable, []);
 });
+test('a device that changes exit loses its stale rule even though its address is still wanted', async () => {
+	const exitRouter = require('../../services/exit_router');
+	const netRouter = require('../../utils/net_router');
+	const wgIface = require('../../utils/wg_iface');
+	const originalNet = netRouter._tryRun;
+	const originalEnsure = wgIface.ensureInterface;
+	const originalSetKey = wgIface.setPrivateKey;
+	const originalSetAddr = wgIface.setAddresses;
+	const originalSetPeer = wgIface.setPeerNoRoutes;
+	const originalSysctls = netRouter.applySysctls;
+
+	// Device 10.2.128.7 now exits through site 6.
+	const plan = exitRouter.planExits([client('10.2.128.7', 6)], ROSTER, 2);
+	assert.deepStrictEqual(plan.rules, [{ from: '10.2.128.7/32', table: TABLE_BASE + 6, priority: RULE_PRIORITY_BASE + 6, exitSiteId: 6 }]);
+
+	const calls = [];
+	// Stub all I/O: installed rule is the OLD one (site 5's table).
+	netRouter._tryRun = (cmd, args) => {
+		calls.push(args.join(' '));
+		if (args[0] === '-o' && args[1] === 'rule') return { ok: true, out: `3005:	from 10.2.128.7 lookup ${TABLE_BASE + 5}` };
+		if (args[0] === 'link' && args[1] === 'show') return { ok: true, out: '' };
+		return { ok: true, out: '' };
+	};
+	wgIface.ensureInterface = async () => {};
+	wgIface.setPrivateKey = () => {};
+	wgIface.setAddresses = () => {};
+	wgIface.setPeerNoRoutes = () => {};
+	netRouter.applySysctls = () => {};
+	try {
+		const result = await exitRouter.applyExits(plan, { privateKey: 'k'.repeat(44) });
+		// The stale rule (table for site 5) must be deleted even though from is still wanted.
+		assert.ok(calls.some((c) => c.includes('rule del') && c.includes(`lookup ${TABLE_BASE + 5}`)),
+			`expected stale rule del for old table, got: ${JSON.stringify(calls)}`);
+		assert.strictEqual(result.failed.length, 0);
+	} finally {
+		netRouter._tryRun = originalNet;
+		wgIface.ensureInterface = originalEnsure;
+		wgIface.setPrivateKey = originalSetKey;
+		wgIface.setAddresses = originalSetAddr;
+		wgIface.setPeerNoRoutes = originalSetPeer;
+		netRouter.applySysctls = originalSysctls;
+	}
+});
+
 
 test('managed rules are read back from the kernel, ignoring everyone else\'s', () => {
 	const exitRouter = require('../../services/exit_router');

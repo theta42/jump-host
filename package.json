@@ -1,0 +1,9 @@
+{
+  "name": "theta-gateway",
+  "version": "3.7.0",
+  "description": "SSH jump host for the theta42 stack",
+  "scripts": {
+    "test": "npm --prefix nodejs test",
+    "start": "npm --prefix nodejs start"
+  }
+}

@@ -38,15 +38,33 @@ function passwordAllowed(clientIp) {
 	return isLocalAddr(clientIp); // 'local'
 }
 
+// The jump host's own public key blob, parsed once at startup. Used to EXCLUDE
+// this gateway's injected key from inbound auth by comparing key blobs rather
+// than comment text. Keying on comment alone fails when the directory replicates
+// this key to another gateway (gateway A's key arrives at gateway B with gateway
+// A's comment) -- a comment-based exclude would not match, and gateway A's key
+// would authenticate on gateway B. Comparing the parsed blob against our own
+// identity key is comment-independent.
+let OWN_KEY_BLOB = null;
+function setOwnKeyBlob(keyLine) {
+	if (!keyLine) return;
+	const parsed = parseKey(keyLine);
+	if (parsed instanceof Error) return;
+	const key = Array.isArray(parsed) ? parsed[0] : parsed;
+	OWN_KEY_BLOB = key.getPublicSSH();
+}
+
+function ownKeyBlob() { return OWN_KEY_BLOB; }
+
 // Compare an inbound publickey to the user's LDAP keys, EXCLUDING the jump
 // host's own injected key (only the jump host may hold that private half).
 function userKeyMatches(user, ctxKey) {
-	const marker = conf.ssh.keyComment;
 	for (const line of user.sshPublicKeys || []) {
-		if (marker && line.trim().endsWith(marker)) continue;
 		const parsed = parseKey(line);
 		if (parsed instanceof Error) continue;
 		const key = Array.isArray(parsed) ? parsed[0] : parsed;
+		// Exclude this gateway's own key by blob comparison (comment-independent).
+		if (OWN_KEY_BLOB && key.getPublicSSH().equals(OWN_KEY_BLOB)) continue;
 		if (key.type === ctxKey.algo && key.getPublicSSH().equals(ctxKey.data)) return key;
 	}
 	return null;
@@ -330,8 +348,6 @@ function runTui(session, uid, hostsPromise) {
 			});
 		});
 		session.on('exec', (accept) => {
-			const c = accept();
-			try { c.stderr.write('jump-host: interactive login required to pick a host (or use uid_-_target)\r\n'); c.exit(1); c.close(); } catch (_) {}
 			finish({ host: null });
 		});
 		session.on('subsystem', (accept, reject) => { reject && reject(); finish({ host: null }); });
@@ -340,6 +356,7 @@ function runTui(session, uid, hostsPromise) {
 
 function start() {
 	JUMP_KEYS = ensureKeys();
+	setOwnKeyBlob(JUMP_KEYS.publicLine);
 	const server = new Server(
 		{ hostKeys: JUMP_KEYS.hostKeys, banner: (conf.ssh && conf.ssh.banner) || undefined },
 		(client, info) => {

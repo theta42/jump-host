@@ -48,7 +48,13 @@ async function summary() {
 		redis.get(`${P()}fail`),
 	]);
 	const userKeys = await redis.keys(`${P()}user_*`);
-	const hostKeys = await redis.keys(`${P()}host_*`);
+	// Host counters are `host_<slug>`; `host_last_*` are epoch timestamps for
+	// the "last connected/last failed" columns and must NOT be counted as
+	// connection totals. Collect only counter keys via SCAN (KEYS blocks on large
+	for await (const key of redis.scanIterator({ MATCH: `${P()}host_*`, COUNT: 100 })) {
+		if (key.startsWith(`${P()}host_last_`)) continue;
+		hostKeys.push(key);
+	}
 	const topN = async (keys, strip) => {
 		const entries = await Promise.all(keys.map(async (k) => [k.slice(strip.length), Number(await redis.get(k))]));
 		return entries.sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));

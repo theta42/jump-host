@@ -7,9 +7,17 @@
 const conf = require('@simpleworkjs/conf');
 const { setUpTable } = require('model-redis');
 const { createOidcClient, bootstrapLocalAdmin } = require('@simpleworkjs/oidc-client');
+// If a Redis password is configured (app_redis__password / REDIS_PASSWORD),
+// pass it to the client so it authenticates. Local Redis with a requirepass
+// set refuses unauthenticated commands, and this store holds WG keys, sessions
+// and API tokens -- none of which an unauthenticated local process should be
+// able to read.
+if (conf.redis && conf.redis.password) {
+	conf.redis.redisConf = conf.redis.redisConf || {};
+	conf.redis.redisConf.password = conf.redis.password;
+}
 
 const Table = setUpTable(conf.redis);
-
 module.exports = Table;
 
 // The raw node-redis client (created + connecting inside model-redis) — used

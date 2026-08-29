@@ -167,11 +167,15 @@ async function applyExits(plan, identity) {
 	// happened to land in it. Removing only rules that no longer match the
 	// plan, and only ones this module could have created, fixes both.
 	const installed = listManagedRules();
-	const wantedFrom = new Set(plan.rules.map((r) => r.from));
+	const wantedRules = new Set(plan.rules.map((r) => `${r.from}|${r.table}`));
 
 	// Remove stale rules: ours, in range, not wanted any more.
+	// Diff on (from, table) pairs so a rule whose device is still wanted but
+	// whose table changed (it moved to a different exit) is removed -- keying
+	// on `from` alone would leave the stale lower-priority rule steering it to
+	// the exit it left.
 	for (const rule of installed) {
-		if (wantedFrom.has(rule.from)) continue;
+		if (wantedRules.has(`${rule.from}|${rule.table}`)) continue;
 		const res = run('ip', ['rule', 'del', 'from', rule.from, 'lookup', String(rule.table), 'priority', String(rule.priority)]);
 		if (!res.ok) failed.push({ rule: rule.from, error: res.err });
 	}
