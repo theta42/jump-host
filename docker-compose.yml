@@ -14,10 +14,13 @@ services:
     container_name: jump-host
     restart: unless-stopped
     ports:
-      - "${JUMP_SSH_PORT:-2222}:2222"   # SSH front door
+      - "${JUMP_SSH_PORT:-2222}:${JUMP_SSH_PORT:-2222}"   # SSH front door
       - "${JUMP_WEB_BIND:-0.0.0.0}:${JUMP_WEB_PORT:-3002}:3002"  # web UI/API
     environment:
       - NODE_ENV=production
-    volumes:
+      # Host keys persist across rebuilds at the mounted path; the conf default
+      # already points here, but pin it explicitly so a conf change cannot
+      # silently redirect keys to an unmounted dir.
+      - app_ssh__hostKeyPath=/var/lib/jump-host/keys
       - ./config:/config:ro       # optional: jump-secrets.js
       - ./.persist/jump-host:/var/lib/jump-host   # host keys persist across rebuilds

@@ -51,6 +51,32 @@ const KEYPAIR_KEY = () => `${conf.redis.prefix}wg_gateway_keypair`;
 // re-handshaking.
 const EXIT_KEYPAIR_KEY = () => `${conf.redis.prefix}wg_exit_keypair`;
 
+// NETMAPs this gateway has applied, tracked in Redis so reconcile can remove
+// ones that are no longer in the roster (a site whose LAN was unset, or whose
+// mapping changed). Without this, NETMAPs are only ever added -- a removed or
+// changed mapping would persist on the box, silently rewriting traffic to a
+// stale LAN.
+const APPLIED_NETMAPS_KEY = () => `${conf.redis.prefix}applied_netmaps`;
+
+async function recordAppliedNetmap(shadow, physical) {
+	const { getRedis } = require('../models/index');
+	const redis = await getRedis();
+	await redis.sAdd(APPLIED_NETMAPS_KEY(), `${shadow}|${physical}`);
+}
+
+async function removeAppliedNetmap(shadow, physical) {
+	const { getRedis } = require('../models/index');
+	const redis = await getRedis();
+	await redis.sRem(APPLIED_NETMAPS_KEY(), `${shadow}|${physical}`);
+}
+
+async function listAppliedNetmaps() {
+	const { getRedis } = require('../models/index');
+	const redis = await getRedis();
+	return await redis.sMembers(APPLIED_NETMAPS_KEY());
+}
+
+
 async function keypair(redisKey, label) {
 	const { getRedis } = require('../models/index');
 	const redis = await getRedis();
@@ -222,12 +248,28 @@ async function applyPlan(plan, identity) {
 		failed.push({ label: 'forwarding/NAT', error: err.message });
 		console.error(`[mesh] could not configure forwarding: ${err.message}`);
 	}
+	// Apply wanted NETMAPs and remember them, then remove any that were
+	// applied on a previous pass but are no longer in the roster.
+	const wantedNetmaps = new Set(plan.netmaps.map((m) => `${m.shadow}|${m.physical}`));
 	for (const map of plan.netmaps) {
 		try {
 			netRouter.applyNetmap(IFACE, map.shadow, map.physical);
+			recordAppliedNetmap(map.shadow, map.physical).catch(() => {});
 		} catch (err) {
 			failed.push({ label: `netmap ${map.shadow}`, error: err.message });
 			console.error(`[mesh] NETMAP ${map.shadow} -> ${map.physical} failed: ${err.message}`);
+		}
+	}
+	for (const applied of await listAppliedNetmaps()) {
+		if (wantedNetmaps.has(applied)) continue;
+		const [shadow, physical] = applied.split('|');
+		console.log(`[mesh] removing stale NETMAP ${shadow} -> ${physical} — no longer in the roster`);
+		try {
+			netRouter.removeNetmap(IFACE, shadow, physical);
+			removeAppliedNetmap(shadow, physical).catch(() => {});
+		} catch (err) {
+			failed.push({ label: `netmap ${shadow}`, error: err.message });
+			console.error(`[mesh] NETMAP ${shadow} -> ${physical} removal failed: ${err.message}`);
 		}
 	}
 
@@ -342,5 +384,5 @@ function stopMeshReconcile() {
 module.exports = {
 	IFACE, LISTEN_PORT, RECONCILE_INTERVAL_MS,
 	localIdentity, exitIdentity, localEndpoint, planReconcile, applyPlan, reconcileMesh,
-	startMeshReconcile, stopMeshReconcile
+	startMeshReconcile, stopMeshReconcile, runReconcile
 };

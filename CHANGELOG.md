@@ -1,3 +1,21 @@
+## [3.7.0] - 2026-08-29
+
+### Fixed
+- **Exit downgrade rule cleanup (H8):** Rule removal is now keyed on `(from, table)` pairs instead of `from` alone, ensuring stale routing rules steering devices to departed exit gateways are deleted even if the device address remains active.
+- **Missing controller copy in Docker image (H17):** Added `COPY nodejs/controller ./controller` to `Dockerfile`, resolving container startup failure (`MODULE_NOT_FOUND` in `bin/www`).
+- **Allowed-IPs parsing in peer removal (M17):** `removePeer` splits allowed IPs with `/\s*,\s*/` to properly strip whitespace/commas and prevent blackhole routes when a peer is removed.
+- **Mesh reconciliation race conditions (M18):** `POST /api/mesh/reconcile` now invokes serialized `runReconcile()` instead of raw `reconcileMesh()`.
+- **Stale NETMAP teardown (M19):** `planReconcile` now tracks applied NETMAPs in Redis and reconciles stale mappings down via `removeNetmap`.
+- **Redis password protection (M20):** `install.sh` and Docker entrypoint now enforce `requirepass` for local Redis instances.
+- **Inbound key collision protection (M21):** Compares full parsed WireGuard identity public key rather than key comments to prevent cross-site identity confusion.
+- **Host key persistence path (M22):** Supports `app_ssh__hostKeyPath` configuration to ensure persistent SSH host keys across Docker deployments.
+- **Mesh state module exports (M36):** Restored `EXIT_KEYPAIR_KEY` and exported all reconciliation methods (`planReconcile`, `applyPlan`, `localIdentity`, etc.).
+- **Metrics SCAN pattern (L7):** Corrected Redis key search to use `host_c*` and exclude non-counter keys.
+- **Super admin group preservation (L8):** Preserves `app_super_admin` in `adminGroups`.
+
+### Added
+- **3-Site WireGuard Mesh E2E Integration Suite:** Added `docker-compose.mesh-e2e.yml` testing mesh identity publishing, cross-site handshakes, shadow LAN translation, exit routing, and policy routing.
+
 ## [3.6.0] - 2026-08-27
 
 ### Changed

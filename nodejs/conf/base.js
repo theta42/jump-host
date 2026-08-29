@@ -37,9 +37,12 @@ module.exports = {
 		// Directory the generated host keys live in (created on first boot).
 		// Persisted in the theta-suite checkout so host keys survive container
 		// rebuilds and host reinstalls — clients pin these, so losing them makes
-		// every user see a host-key-changed warning.
-		hostKeyPath: '/opt/theta-suite/.persist/jump-host/keys',
-		banner: '',
+		// Persisted across container rebuilds (bind-mounted at
+		// /var/lib/jump-host) and host installs (override via
+		// app_ssh__hostKeyPath in gateway.env to the persisted checkout dir).
+		// Clients pin these, so losing them makes every user see a
+		// host-key-changed warning.
+		hostKeyPath: '/var/lib/jump-host/keys',
 		// Password auth policy: 'off' (keys only), 'local' (passwords allowed
 		// only from loopback/RFC1918 client addresses — keys-only from the
 		// public internet), or 'all'. Default 'local'.
@@ -98,6 +101,10 @@ module.exports = {
 
 	redis: {
 		prefix: 'jump_host_',
+		// Password for the local Redis (requirepass). Set via app_redis__password
+		// (or REDIS_PASSWORD in gateway.env); empty means no auth. models/index.js
+		// forwards this into redisConf so the client authenticates.
+		password: '',
 		redisConf: {},
 	},
 

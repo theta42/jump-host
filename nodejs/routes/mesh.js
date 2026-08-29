@@ -114,7 +114,7 @@ router.get('/status', middleware.auth, middleware.requireJumpAdmin, async (req, 
 // want to wait for the next pass.
 router.post('/reconcile', middleware.auth, middleware.requireJumpAdmin, async (req, res, next) => {
 	try {
-		res.json({ status: 'ok', ...(await meshState.reconcileMesh()) });
+		res.json({ status: 'ok', ...(await meshState.runReconcile()) });
 	} catch (e) { next(e); }
 });
 

@@ -30,6 +30,7 @@ RUN npm ci --omit=dev
 COPY nodejs/app.js ./
 COPY nodejs/bin ./bin
 COPY nodejs/conf ./conf
+COPY nodejs/controller ./controller
 COPY nodejs/middleware ./middleware
 COPY nodejs/models ./models
 COPY nodejs/routes ./routes

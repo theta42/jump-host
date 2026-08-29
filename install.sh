@@ -146,12 +146,16 @@ info "Installing production dependencies..."
 # ── redis ────────────────────────────────────────────────────────────────────
 # Bound to loopback explicitly. In a container this was implicitly private; on
 # a host, an unbound Redis holding sessions, OAuth state and API tokens is
-# listening on the LAN.
-install -m 0644 /dev/stdin /etc/redis/theta-gateway.conf <<EOF
+# listening on the LAN. Authenticated too: a local process (or a compromised
+# box) that can reach loopback must not read WG private keys or session tokens
+# without the password.
+REDIS_PASSWORD=$(openssl rand -hex 32)
+install -m 0640 /dev/stdin /etc/redis/theta-gateway.conf <<EOF
 # Theta Gateway's Redis. Managed by install.sh -- edits will be overwritten.
 bind 127.0.0.1 ::1
 port 6379
 dir $REDIS_DIR
+requirepass $REDIS_PASSWORD
 appendonly yes
 appendfilename appendonly.aof
 save 900 1
@@ -204,9 +208,17 @@ VAULT_TOKEN=
 THETA_MESH_ENDPOINT=${THETA_MESH_ENDPOINT:-${JUMP_HOST:-}:${JUMP_WG_PORT:-51820}}
 
 # SSH front door. Must not collide with this host's own sshd.
-JUMP_SSH_PORT=$SSH_PORT
+app_ssh__listenPort=$SSH_PORT
+ JUMP_SSH_PORT=$SSH_PORT
 
 REDIS_DATA_DIR=$REDIS_DIR
+
+# Local Redis password (requirepass). The gateway's Redis holds WireGuard keys,
+# sessions and API tokens; this keeps a local process that can reach loopback
+# from reading them without the password. Generated on first install. The app
+# reads it as app_redis__password.
+app_redis__password=$REDIS_PASSWORD
+
 
 # SSH host keys. Generated on first boot and then stable -- clients pin them,
 # so losing these makes every user see a host-key-changed warning.
