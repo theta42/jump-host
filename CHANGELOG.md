@@ -1,3 +1,22 @@
+## [3.8.3] - 2026-09-16
+
+### Changed
+- **`@simpleworkjs/directory-schema` 1.2.0 → 1.3.0.** Picks up the metadata
+  keys the theta-suite catalog work adds (`catalog`, `isHTTPS`,
+  `externalIsHTTPS`, `healthPath`) and makes `status` public rather than
+  admin-only. jump-host is a machine caller, and `isDirectoryAdmin()` is
+  always false for `isMachine` -- so it receives the non-admin projection, and
+  a key that is not declared in the shared schema is invisible to it. That is
+  the same class of bug as v1.1.0 and v1.2.0; staying on the current schema is
+  how this side keeps seeing the fields the directory is sending. No code
+  change here: 97/97 tests pass unchanged.
+
+### Fixed
+- **Root `package.json` was three patch versions behind** at `3.8.0` on a tree
+  released as `v3.8.2`. `nodejs/package.json` and the tag were both correct.
+  Nothing consumes the root manifest's version field, which is exactly why it
+  drifts unnoticed -- the same slip corrected in proxy and sso-manager-node.
+
 ## [3.8.2] - 2026-09-16
 
 ### Fixed
