@@ -1,3 +1,49 @@
+## [3.9.1] - 2026-09-17
+
+### Fixed
+- **A directory outage was reported to users as a permissions denial.**
+  `accessibleHosts()` caught its own transport errors, logged them, and
+  returned `[]` -- which is a different claim entirely: "you have access to
+  nothing" rather than "I could not find out". Every caller acted on the first
+  one.
+
+  `resolveAndConnect()` wraps the call in
+  `.catch(() => { throw fail('directory-unreachable') })` and the TUI path has
+  its own `try/catch` for the same purpose. **Both were unreachable.** An
+  outage produced an empty host list, `matchTarget()` matched nothing, and the
+  user was told
+
+      no host you can access matches that target
+
+  while the audit log recorded `no-such-target` -- indistinguishable from a
+  typo or a genuine denial. `directory-unreachable` has been defined in
+  `reasonMessage()` the whole time and could never fire, so an operator
+  debugging "nobody can reach anything" was pointed at group membership rather
+  than at the directory being down.
+
+  It still fails closed: an unreachable directory grants no access. It now says
+  which of the two it is.
+- **A failed lookup was cached for the full 30s TTL.** One blip locked that
+  user out until it expired, and a retry inside the window read the cached
+  empty instead of re-asking, so retrying could not shorten it. Failures are no
+  longer cached.
+- **`GET /api/user/hosts` returned an empty list during an outage,** which on
+  the dashboard is indistinguishable from "your access was revoked". It now
+  answers `503 DirectoryUnavailable`. `allHosts()` tags its errors the same way,
+  so the admin view and the user view report one fault identically instead of
+  one 500-ing and the other 503-ing.
+
+### Changed
+- **Removed a KNOWN LIMITATION that no longer applies.** `utils/access.js`
+  carried a prominent note that `managed` and `discovery_sources` were
+  undeclared in `@simpleworkjs/directory-schema`, so the projection stripped
+  both for machine callers and `isCatalogHost()` returned true for everything
+  -- putting unpromoted discovery output in the admin host view. Declaring the
+  two keys is exactly what directory-schema **v1.2.0** did, and this package has
+  required it since. Verified against the installed schema: a machine caller
+  receives both fields. The note is now history rather than a warning about a
+  working thing.
+
 ## [3.9.0] - 2026-09-17
 
 ### Added
