@@ -29,12 +29,48 @@ test('drops non-hosts from access projection', async () => {
 	assert.deepStrictEqual(hosts.map((h) => h.id).sort(), ['1', '2']);
 });
 
-test('a failing access query returns empty list without throwing', async () => {
+// REPLACES 'a failing access query returns empty list without throwing'.
+//
+// That assertion encoded the bug. Returning [] makes the claim "you have
+// access to nothing", which is a different statement from "I could not find
+// out" -- and every caller acted on the first one. resolveAndConnect() wraps
+// this in `.catch(() => throw fail('directory-unreachable'))` and the TUI path
+// has its own try/catch, and BOTH were unreachable: an outage produced an
+// empty host list, matchTarget() matched nothing, and the user was told "no
+// host you can access matches that target". `directory-unreachable` was
+// defined in reasonMessage() and could never fire.
+//
+// Still fails closed -- an unreachable directory grants nothing -- but it now
+// says which of the two it is, to the user and to the audit log.
+test('an unreachable directory throws rather than claiming no access', async () => {
 	clearCache();
 	const user = { uid: 'bob', dn: 'uid=bob,ou=people,dc=x' };
 	const fetchImpl = async () => ({ ok: false, status: 500 });
-	const hosts = await accessibleHosts(user, { fetchImpl });
-	assert.deepStrictEqual(hosts, []);
+	await assert.rejects(
+		() => accessibleHosts(user, { fetchImpl }),
+		(err) => err.code === 'directory-unreachable',
+	);
+});
+
+// A failed lookup written into the cache locks the user out for the full TTL
+// even once the directory is back, and a retry inside that window reads the
+// cached empty instead of re-asking -- so one blip became 30 seconds of denial
+// that retrying could not shorten.
+test('a failed lookup is not cached', async () => {
+	clearCache();
+	const user = { uid: 'carol', dn: 'c' };
+	let calls = 0;
+	const failing = async () => { calls++; return { ok: false, status: 503 }; };
+	await assert.rejects(() => accessibleHosts(user, { fetchImpl: failing }));
+	assert.strictEqual(calls, 1);
+
+	// Immediately afterwards, well inside the 30s TTL: the directory is back,
+	// and the user must not still be locked out.
+	const recovered = async () => ({ ok: true, json: async () => ({ results: [
+		{ id: '1', kind: 'host', slug: 'host_web01' },
+	] }) });
+	const hosts = await accessibleHosts(user, { fetchImpl: recovered });
+	assert.deepStrictEqual(hosts.map((h) => h.id), ['1']);
 });
 
 test('caches per uid', async () => {
@@ -89,14 +125,29 @@ test('drops auto-discovered hosts that were never promoted', async () => {
 	assert.deepStrictEqual(hosts.map((h) => h.id).sort(), ['1', '3', '4']);
 });
 
-test('a bare-array response (envelope drift) returns empty list', async () => {
+test('a bare-array response (envelope drift) is reported, not silently empty', async () => {
 	clearCache();
 	const user = { uid: 'dave', dn: 'd' };
 	// drift shape: a bare array instead of { results: [...] }. The shared client
-	// throws DirectoryEnvelopeViolation; access.js must catch + continue.
+	// throws DirectoryEnvelopeViolation, which is exactly the class of fault
+	// that must not be flattened into "this user has no hosts" -- a directory
+	// answering in the wrong shape is a directory this side cannot read.
 	const fetchImpl = async () => {
 		return { ok: true, json: async () => [{ id: '7', kind: 'host' }] };
 	};
-	const hosts = await accessibleHosts(user, { fetchImpl });
-	assert.deepStrictEqual(hosts, []);
+	await assert.rejects(
+		() => accessibleHosts(user, { fetchImpl }),
+		(err) => err.code === 'directory-unreachable',
+	);
+});
+
+// The admin view and the user view must report the same fault the same way,
+// or an operator sees a 500 on one page and a 503 on the other for one outage.
+test('allHosts tags an unreachable directory the same way', async () => {
+	clearCache();
+	const fetchImpl = async () => ({ ok: false, status: 502 });
+	await assert.rejects(
+		() => allHosts({ fetchImpl }),
+		(err) => err.code === 'directory-unreachable',
+	);
 });

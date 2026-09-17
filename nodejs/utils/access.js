@@ -58,19 +58,14 @@ if (conf.standalone && conf.standalone.enabled) {
 	// Proxmox VMs showing up in the picker); if a third consumer needs it,
 	// hoist it into @simpleworkjs/directory-schema rather than copying again.
 	//
-	// KNOWN LIMITATION -- this filter cannot see what it keys on.
-	// `managed` and `discovery_sources` are not declared in
-	// @simpleworkjs/directory-schema's METADATA_KEYS, so projectResource()
-	// strips both for any caller that is not a directory admin -- and
-	// isDirectoryAdmin() is false for `isMachine`, which is what jump-host is.
-	// Every resource therefore arrives with neither field, `autoDiscovered`
-	// computes false, and this returns true for everything.
-	//
-	// accessibleHosts() is unaffected in practice: the SSO applies the same
-	// catalog rule server-side before answering /api/discovery/access/:uid, so
-	// nothing unpromoted is in the list to begin with. allHosts() -- the
-	// unfiltered admin view -- IS affected. Fixing it properly means declaring
-	// the two keys in directory-schema.
+	// This filter could not see what it keys on until directory-schema v1.2.0:
+	// `managed` and `discovery_sources` were undeclared, so projectResource()
+	// stripped both for every non-admin caller -- and isDirectoryAdmin() is
+	// false for `isMachine`, which is what jump-host is. Every resource arrived
+	// with neither field, `autoDiscovered` computed false, and this returned
+	// true for everything, which put unpromoted discovery output in the admin
+	// host view. Both keys are declared public now, so the filter works; the
+	// dependency floor in package.json is what keeps it working.
 	function isCatalogHost(r) {
 		if (!r || r.kind !== 'host') return false;
 		const meta = r.metadata || {};
@@ -82,19 +77,58 @@ if (conf.standalone && conf.standalone.enabled) {
 	}
 
 	async function allHosts({ fetchImpl = fetch } = {}) {
-		const resources = await directoryClient({ fetchImpl }).getResourcesByGroup(undefined, { kind: 'host' });
+		let resources;
+		try {
+			resources = await directoryClient({ fetchImpl }).getResourcesByGroup(undefined, { kind: 'host' });
+		} catch (error) {
+			// Tagged the same way accessibleHosts() tags it, so the admin view
+			// and the user view report an outage identically rather than one
+			// 503-ing and the other 500-ing on the same fault.
+			console.error(`[access] ${error.message}`);
+			const err = new Error(`directory unreachable: ${error.message}`);
+			err.code = 'directory-unreachable';
+			throw err;
+		}
 		return resources.filter(isCatalogHost);
 	}
 
+	// Throws when the directory could not be reached. It used to catch, log and
+	// return [], which is a different claim entirely: "you have access to
+	// nothing" rather than "I could not find out".
+	//
+	// The caller acts on that distinction -- resolveAndConnect() wraps this in
+	// `.catch(() => { throw fail('directory-unreachable') })` -- but the catch
+	// was unreachable, so an outage fell through to an empty host list,
+	// matchTarget() matched nothing, and the user was told
+	//
+	//     no host you can access matches that target
+	//
+	// which is a permissions answer to an availability problem. `no-such-target`
+	// also went into the audit log, indistinguishable from a typo or a genuine
+	// denial, so the operator debugging "nobody can reach anything" is pointed
+	// at group membership rather than at the directory being down.
+	// `directory-unreachable` has been defined in reasonMessage() the whole
+	// time and could never fire.
+	//
+	// Failing closed is still what happens -- an unreachable directory grants
+	// no access -- but it now says so.
 	async function accessibleHosts(user, { fetchImpl = fetch } = {}) {
 		const hit = cache.get(user.uid);
 		if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.hosts;
 
-		let resources = [];
+		let resources;
 		try {
 			resources = await directoryClient({ fetchImpl }).getAccess(user.uid);
 		} catch (error) {
+			// NOT cached. A failed lookup written into the cache locks the user
+			// out for the full TTL even once the directory is back, and a retry
+			// inside that window reads the cached empty instead of re-asking --
+			// so one blip became 30 seconds of denial that retrying could not
+			// shorten.
 			console.error(`[access] ${error.message}`);
+			const err = new Error(`directory unreachable: ${error.message}`);
+			err.code = 'directory-unreachable';
+			throw err;
 		}
 
 		const hosts = resources.filter(isCatalogHost);

@@ -40,7 +40,20 @@ router.get('/hosts', async (req, res, next) => {
 		}));
 
 		res.json({ results: enriched });
-	} catch (err) { next(err); }
+	} catch (err) {
+		// An unreachable directory is not this service failing, and it is not an
+		// empty host list either -- which is what this used to return, silently,
+		// because accessibleHosts() swallowed the error. A dashboard showing
+		// "no hosts" during a directory outage is indistinguishable from one
+		// showing "your access was revoked".
+		if (err && err.code === 'directory-unreachable') {
+			return res.status(503).json({
+				name: 'DirectoryUnavailable',
+				message: 'The directory is unreachable, so your host list cannot be resolved right now.',
+			});
+		}
+		next(err);
+	}
 });
 
 module.exports = router;
